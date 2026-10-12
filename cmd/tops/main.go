@@ -1,4 +1,4 @@
-// Command tops manages a Temporal cluster over ssh
+// Command tops manages a Temporal cluster over SSH
 package main
 
 import (
