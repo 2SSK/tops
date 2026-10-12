@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  enable:
+    - revive
+    - gosec
+    - errorlint
+    - gocyclo
+    - misspell
+    - bodyclose
+    - noctx
+    - sloglint
+    - contextcheck
+  settings:
+    gocyclo:
+      min-complexity: 10
+
+formatters:
+  enable:
+    - gofmt
