@@ -7,14 +7,15 @@ import (
 )
 
 // PrintError writes err for the operator: what happened, why, and how to fix it.
-func PrintError(w io.Writer, err error) error {
+func PrintError(w io.Writer, unicode bool, err error) error {
+	mark := Mark(Fail, unicode) + " "
 	var b strings.Builder
 
 	var ue *UserError
 	if !errors.As(err, &ue) {
-		b.WriteString("✗ " + err.Error() + "\n")
+		b.WriteString(mark + err.Error() + "\n")
 	} else {
-		b.WriteString("✗ " + ue.What + "\n")
+		b.WriteString(mark + ue.What + "\n")
 		if ue.Why != "" {
 			b.WriteString("  why: " + ue.Why + "\n")
 		}

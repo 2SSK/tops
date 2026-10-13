@@ -23,7 +23,7 @@ func main() {
 	stop()
 
 	if err != nil {
-		_ = term.PrintError(os.Stderr, err)
+		_ = term.PrintError(os.Stderr, term.UnicodeLocale(os.Getenv), err)
 	}
 
 	os.Exit(term.ExitCode(err))
