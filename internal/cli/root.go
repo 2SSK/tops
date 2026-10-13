@@ -12,9 +12,15 @@ func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "tops",
 		Short:         "Operate a Temporal cluster over SSH",
+		Args:          usageArgs(cobra.NoArgs),
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
 	}
+
+	root.SetFlagErrorFunc(usageError)
 
 	root.AddGroup(
 		&cobra.Group{ID: "spec", Title: "Spec:"},
@@ -29,6 +35,7 @@ func NewRootCommand() *cobra.Command {
 		Use:     "version",
 		Short:   "Print the tops version",
 		GroupID: "integrate",
+		Args:    usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), "tops dev")
 			return err
