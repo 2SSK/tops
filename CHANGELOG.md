@@ -11,3 +11,4 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `tops` root command with help grouped into Spec, Change, Look and Integrate.
 - `tops version` and `tops completion`.
 - Documented exit codes; Ctrl-C and SIGTERM cancel the run instead of killing it.
+- Errors print as what happened, why, and how to fix it, on stderr.

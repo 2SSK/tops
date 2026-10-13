@@ -21,5 +21,10 @@ func main() {
 	err := cli.NewRootCommand().ExecuteContext(ctx)
 
 	stop()
+
+	if err != nil {
+		_ = term.PrintError(os.Stderr, err)
+	}
+
 	os.Exit(term.ExitCode(err))
 }

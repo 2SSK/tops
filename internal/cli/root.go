@@ -10,9 +10,10 @@ import (
 // NewRootCommand returns the tops root command with all subcommands attached.
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:          "tops",
-		Short:        "Operate a Temporal cluster over SSH",
-		SilenceUsage: true,
+		Use:           "tops",
+		Short:         "Operate a Temporal cluster over SSH",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	root.AddGroup(
