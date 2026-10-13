@@ -2,13 +2,24 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/2SSK/tops/internal/cli"
+	"github.com/2SSK/tops/internal/term"
 )
 
 func main() {
-	if err := cli.NewRootCommand().Execute(); err != nil {
-		os.Exit(1)
-	}
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+
+	err := cli.NewRootCommand().ExecuteContext(ctx)
+
+	stop()
+	os.Exit(term.ExitCode(err))
 }
