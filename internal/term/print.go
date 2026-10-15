@@ -7,8 +7,8 @@ import (
 )
 
 // PrintError writes err for the operator: what happened, why, and how to fix it.
-func PrintError(w io.Writer, unicode bool, err error) error {
-	mark := Mark(Fail, unicode) + " "
+func PrintError(w io.Writer, style Style, err error) error {
+	mark := style.Mark(Fail) + " "
 	var b strings.Builder
 
 	var ue *UserError

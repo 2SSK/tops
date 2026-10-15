@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	xterm "golang.org/x/term"
+
 	"github.com/2SSK/tops/internal/cli"
 	"github.com/2SSK/tops/internal/term"
 )
@@ -23,7 +25,12 @@ func main() {
 	stop()
 
 	if err != nil {
-		_ = term.PrintError(os.Stderr, term.UnicodeLocale(os.Getenv), err)
+		style := term.Style{
+			Unicode: term.UnicodeLocale(os.Getenv),
+			Color:   term.ColorEnabled(os.Getenv, xterm.IsTerminal(int(os.Stderr.Fd()))),
+		}
+
+		_ = term.PrintError(os.Stderr, style, err)
 	}
 
 	os.Exit(term.ExitCode(err))
