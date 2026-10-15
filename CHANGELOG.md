@@ -14,3 +14,5 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Errors print as what happened, why, and how to fix it, on stderr.
 - unknown commands, flags and extra arguments exit 4 with a `usage.invalid` error.
 - Coloured status marks on terminals; plain output for pipes, `NO_COLOR` and `TERM=dumb`.
+- `--json`: failures print one `{"kind": "Error", ...}` document on stdout.
+- `--no-color`: plain output on a terminal.

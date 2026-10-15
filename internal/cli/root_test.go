@@ -7,7 +7,7 @@ import (
 )
 
 func TestRootHelpShowsGroups(t *testing.T) {
-	cmd := NewRootCommand()
+	cmd := NewRootCommand(&Options{})
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetArgs([]string{"--help"})

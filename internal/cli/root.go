@@ -7,8 +7,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Options holds the global flags shared by every command
+type Options struct {
+	JSON    bool
+	NoColor bool
+}
+
 // NewRootCommand returns the tops root command with all subcommands attached.
-func NewRootCommand() *cobra.Command {
+// Global flags are parsed into opts.
+func NewRootCommand(opts *Options) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "tops",
 		Short:         "Operate a Temporal cluster over SSH",
@@ -21,6 +28,8 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	root.SetFlagErrorFunc(usageError)
+	root.PersistentFlags().BoolVar(&opts.JSON, "json", false, "machine-readable output")
+	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "plain output")
 
 	root.AddGroup(
 		&cobra.Group{ID: "spec", Title: "Spec:"},

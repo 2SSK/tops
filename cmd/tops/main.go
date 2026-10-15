@@ -13,6 +13,8 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
+var opts cli.Options
+
 func main() {
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
@@ -20,18 +22,29 @@ func main() {
 		syscall.SIGTERM,
 	)
 
-	err := cli.NewRootCommand().ExecuteContext(ctx)
+	err := cli.NewRootCommand(&opts).ExecuteContext(ctx)
 
 	stop()
 
 	if err != nil {
-		style := term.Style{
-			Unicode: term.UnicodeLocale(os.Getenv),
-			Color:   term.ColorEnabled(os.Getenv, xterm.IsTerminal(int(os.Stderr.Fd()))),
-		}
-
-		_ = term.PrintError(os.Stderr, style, err)
+		reportError(opts, err)
 	}
 
 	os.Exit(term.ExitCode(err))
+}
+
+// reportError prints err as one JSON document on stdout with --json,
+// otherwise as what, why and fix on stderr.
+func reportError(opts cli.Options, err error) {
+	if opts.JSON {
+		_ = term.WriteErrorJSON(os.Stdout, "dev", err)
+		return
+	}
+
+	style := term.Style{
+		Unicode: term.UnicodeLocale(os.Getenv),
+		Color:   !opts.NoColor && term.ColorEnabled(os.Getenv, xterm.IsTerminal(int(os.Stderr.Fd()))),
+	}
+
+	_ = term.PrintError(os.Stderr, style, err)
 }
