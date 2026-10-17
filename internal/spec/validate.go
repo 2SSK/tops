@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Problem is one thing wrong with  a spec, named by its path in cluster.yaml
@@ -22,6 +23,7 @@ var (
 	semver      = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 	dnsName     = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$`)
 	pgUser      = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
+	nsName      = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$`)
 )
 
 var supportedMinors = []string{"1.30", "1.31"}
@@ -38,6 +40,7 @@ func Validate(c *Cluster) []Problem {
 	validateSSH(&ps, c.SSH)
 	validateAccess(&ps, c.Access)
 	validateUI(&ps, c.UI, c.Nodes)
+	validateNamespaces(&ps, c.Namespaces)
 	return ps
 }
 
@@ -196,4 +199,39 @@ func nodeExists(name string, nodes []Node) bool {
 		}
 	}
 	return false
+}
+
+// minRetention is the shortest retention Temporal accepts for a local namespace.
+const minRetention = time.Hour
+
+func validateNamespaces(ps *problems, namespaces []Namespace) {
+	seen := map[string]int{}
+	for i, ns := range namespaces {
+		path := fmt.Sprintf("namespaces[%d]", i)
+		switch {
+		case ns.Name == "":
+			ps.addf(path+".name", "is required")
+		case ns.Name == "temporal-system":
+			ps.addf(path+".name", "temporal-system is Temporal's own namespace and cannot be managed")
+		case !nsName.MatchString(ns.Name):
+			ps.addf(path+".name", "%q must match %s", ns.Name, nsName)
+		default:
+			if j, dup := seen[ns.Name]; dup {
+				ps.addf(path+".name", "%s is also namespaces[%d]", ns.Name, j)
+			}
+		}
+		seen[ns.Name] = i
+
+		validateRetention(ps, path+".retention", ns.Retention)
+	}
+}
+
+func validateRetention(ps *problems, path, retention string) {
+	d, err := ParseDuration(retention)
+	switch {
+	case err != nil:
+		ps.addf(path, "%q is not a duration like 72h or 7d", retention)
+	case d < minRetention:
+		ps.addf(path, "%s is below Temporal's minimum of 1h", retention)
+	}
 }

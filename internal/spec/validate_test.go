@@ -58,6 +58,14 @@ func TestValidateProblems(t *testing.T) {
 		{"no ui", func(c *Cluster) { c.UI = nil }, nil},
 		{"ui on unknown node", func(c *Cluster) { c.UI.Node = "tscale-09" }, []string{`ui.node: "tscale-09" is not a name in nodes`}},
 		{"missing ui version", func(c *Cluster) { c.UI.Version = "" }, []string{`ui.version: "" must be a version like 2.54.1`}},
+		{"retention in days", func(c *Cluster) { c.Namespaces[0].Retention = "7d" }, nil},
+		{"bad retention", func(c *Cluster) { c.Namespaces[0].Retention = "a week" }, []string{`namespaces[0].retention: "a week" is not a duration like 72h or 7d`}},
+		{"missing retention", func(c *Cluster) { c.Namespaces[1].Retention = "" }, []string{`namespaces[1].retention: "" is not a duration like 72h or 7d`}},
+		{"retention too short", func(c *Cluster) { c.Namespaces[0].Retention = "30m" }, []string{"namespaces[0].retention: 30m is below Temporal's minimum of 1h"}},
+		{"bad namespace name", func(c *Cluster) { c.Namespaces[0].Name = "my namespace" }, []string{`namespaces[0].name: "my namespace" must match ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$`}},
+		{"duplicate namespace", func(c *Cluster) { c.Namespaces[1].Name = "default" }, []string{"namespaces[1].name: default is also namespaces[0]"}},
+		{"system namespace", func(c *Cluster) { c.Namespaces[0].Name = "temporal-system" }, []string{"namespaces[0].name: temporal-system is Temporal's own namespace and cannot be managed"}},
+		{"missing namespace name", func(c *Cluster) { c.Namespaces[0].Name = "" }, []string{"namespaces[0].name: is required"}},
 	}
 
 	for _, tt := range tests {
