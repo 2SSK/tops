@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"slices"
+	"strings"
 )
 
 // Problem is one thing wrong with  a spec, named by its path in cluster.yaml
@@ -17,7 +19,13 @@ func (p Problem) String() string { return p.Path + ": " + p.Message }
 var (
 	clusterName = regexp.MustCompile(`^[a-z][a-z0-9-]{1,30}$`)
 	nodeName    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	semver      = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+	dnsName     = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$`)
+	pgUser      = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 )
+
+var supportedMinors = []string{"1.30", "1.31"}
+var logLevels = []string{"debug", "info", "warn", "error"}
 
 // Validate checks a spec after Defaults and returns every problem, not only the first,
 // so the operator can fix them all in one pass.
@@ -25,6 +33,9 @@ func Validate(c *Cluster) []Problem {
 	var ps problems
 	validateCluster(&ps, c)
 	validateNodes(&ps, c.Nodes)
+	validateTemporal(&ps, c.Temporal)
+	validatePersistence(&ps, c.Persistence)
+	validateSSH(&ps, c.SSH)
 	return ps
 }
 
@@ -70,4 +81,63 @@ func validateNodes(ps *problems, nodes []Node) {
 
 		addresses[n.Address] = i
 	}
+}
+
+func validateTemporal(ps *problems, t Temporal) {
+	switch {
+	case !semver.MatchString(t.Version):
+		ps.addf("temporal.version", "%q must be a version like 1.31.3", t.Version)
+	case !slices.Contains(supportedMinors, minor(t.Version)):
+		ps.addf("temporal.version", "%s is not supported; use %s.x", t.Version, strings.Join(supportedMinors, ".x or "))
+	}
+	if !semver.MatchString(t.CLI) {
+		ps.addf("temporal.cli", "%q must be a version like 1.9.1", t.CLI)
+	}
+
+	if !slices.Contains(logLevels, t.LogLevel) {
+		ps.addf("temporal.logLevel", "%q must be one of %s", t.LogLevel, strings.Join(logLevels, ", "))
+	}
+}
+
+func checkPort(ps *problems, path string, port int) {
+	if port < 1 || port > 65535 {
+		ps.addf(path, "%d must be between 1 and 65535", port)
+	}
+}
+
+func minor(version string) string {
+	return version[:strings.LastIndex(version, ".")]
+}
+
+func validatePersistence(ps *problems, p Persistence) {
+	pg := p.Postgres
+	if pg == nil {
+		ps.addf("persistence", "postgres is required (v1 supports only postgres)")
+		return
+	}
+
+	if !isHost(pg.Host) {
+		ps.addf("persistence.postgres.host", "%q must be an IPv4 address or a DNS name", pg.Host)
+	}
+
+	checkPort(ps, "persistence.postgres.port", pg.Port)
+
+	if !pgUser.MatchString(pg.User) {
+		ps.addf("persistence.postgres.user", "%q must match %s", pg.User, pgUser)
+	}
+}
+
+func validateSSH(ps *problems, s SSH) {
+	if s.User == "" {
+		ps.addf("ssh.user", "is required")
+	}
+	checkPort(ps, "ssh.port", s.Port)
+}
+
+// isHost reports whether s is an IPv4 address or a DNS name.
+func isHost(s string) bool {
+	if addr, err := netip.ParseAddr(s); err == nil {
+		return addr.Is4()
+	}
+	return dnsName.MatchString(s)
 }
