@@ -36,6 +36,8 @@ func Validate(c *Cluster) []Problem {
 	validateTemporal(&ps, c.Temporal)
 	validatePersistence(&ps, c.Persistence)
 	validateSSH(&ps, c.SSH)
+	validateAccess(&ps, c.Access)
+	validateUI(&ps, c.UI, c.Nodes)
 	return ps
 }
 
@@ -140,4 +142,58 @@ func isHost(s string) bool {
 		return addr.Is4()
 	}
 	return dnsName.MatchString(s)
+}
+
+// validateSources checks one firewall source list: IPv4 addresses or CIDRs, no duplicates.
+func validateSources(ps *problems, path string, sources []string) {
+	seen := map[string]int{}
+	for i, s := range sources {
+		p := fmt.Sprintf("%s[%d]", path, i)
+
+		if !isSource(s) {
+			ps.addf(p, "%q must be an IPv4 address or CIDR", s)
+		} else if j, dup := seen[s]; dup {
+			ps.addf(p, "%s is also %s[%d]", s, path, j)
+		}
+		seen[s] = i
+	}
+}
+
+func isSource(s string) bool {
+	if addr, err := netip.ParseAddr(s); err == nil {
+		return addr.Is4()
+	}
+	if prefix, err := netip.ParsePrefix(s); err == nil {
+		return prefix.Addr().Is4()
+	}
+	return false
+}
+
+func validateAccess(ps *problems, a Access) {
+	validateSources(ps, "access.clients", a.Clients)
+	validateSources(ps, "access.monitors", a.Monitors)
+	validateSources(ps, "access.admins", a.Admins)
+}
+
+func validateUI(ps *problems, ui *UI, nodes []Node) {
+	if ui == nil {
+		return
+	}
+
+	if !semver.MatchString(ui.Version) {
+		ps.addf("ui.version", "%q must be a version like 2.54.1", ui.Version)
+	}
+
+	if ui.Node != "" && !nodeExists(ui.Node, nodes) {
+		ps.addf("ui.node", "%q is not a name in nodes", ui.Node)
+	}
+}
+
+func nodeExists(name string, nodes []Node) bool {
+	for _, n := range nodes {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
 }
