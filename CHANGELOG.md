@@ -16,3 +16,4 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Coloured status marks on terminals; plain output for pipes, `NO_COLOR` and `TERM=dumb`.
 - `--json`: failures print one `{"kind": "Error", ...}` document on stdout.
 - `--no-color`: plain output on a terminal.
+- `tops validate [-f cluster.yaml]`: checks the spec offline and lists every problem; exits 4 when invalid.

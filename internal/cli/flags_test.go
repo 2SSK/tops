@@ -11,10 +11,10 @@ func TestGlobalFlags(t *testing.T) {
 		args []string
 		want Options
 	}{
-		{"no flags", []string{"version"}, Options{}},
-		{"json before command", []string{"--json", "version"}, Options{JSON: true}},
-		{"json after command", []string{"version", "--json"}, Options{JSON: true}},
-		{"no-color", []string{"version", "--no-color"}, Options{NoColor: true}},
+		{"no flags", []string{"version"}, Options{File: "cluster.yaml"}},
+		{"json before command", []string{"--json", "version"}, Options{JSON: true, File: "cluster.yaml"}},
+		{"json after command", []string{"version", "--json"}, Options{JSON: true, File: "cluster.yaml"}},
+		{"no-color", []string{"version", "--no-color"}, Options{NoColor: true, File: "cluster.yaml"}},
 	}
 
 	for _, tt := range tests {

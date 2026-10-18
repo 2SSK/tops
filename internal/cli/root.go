@@ -11,6 +11,7 @@ import (
 type Options struct {
 	JSON    bool
 	NoColor bool
+	File    string
 }
 
 // NewRootCommand returns the tops root command with all subcommands attached.
@@ -30,6 +31,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.SetFlagErrorFunc(usageError)
 	root.PersistentFlags().BoolVar(&opts.JSON, "json", false, "machine-readable output")
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "plain output")
+	root.PersistentFlags().StringVarP(&opts.File, "file", "f", "cluster.yaml", "spec file")
 
 	root.AddGroup(
 		&cobra.Group{ID: "spec", Title: "Spec:"},
@@ -50,6 +52,8 @@ func NewRootCommand(opts *Options) *cobra.Command {
 			return err
 		},
 	})
+
+	root.AddCommand(newValidateCommand(opts))
 
 	return root
 }
