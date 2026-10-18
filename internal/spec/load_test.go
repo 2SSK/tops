@@ -3,6 +3,7 @@ package spec
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,5 +57,38 @@ func TestParseErrors(t *testing.T) {
 				t.Errorf("why = %q, want it to contain %q", ue.Why, tt.wantWhy)
 			}
 		})
+	}
+}
+
+func TestLoad(t *testing.T) {
+	c, err := Load("testdata/lab.yaml")
+	if err != nil {
+		t.Fatalf("Load: %#v", err)
+	}
+	if c.SSH.Port != 22 {
+		t.Errorf("ssh.port = %d, want the  default 22 (Load must apply Defaults)", c.SSH.Port)
+	}
+}
+
+func TestLoadMissingFile(t *testing.T) {
+	_, err := Load("testdata/missing.yaml")
+
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "spec.unreadable" {
+		t.Fatalf("err - %#v, want a spec.unreadable UserError", err)
+	}
+}
+
+func TestLoadInvalidYAML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cluster.yaml")
+	if err := os.WriteFile(path, []byte("shard: 512\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "spec.invalid" {
+		t.Fatalf("err = %#v, want a spec.invalid UserError", err)
 	}
 }
