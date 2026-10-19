@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,9 +36,14 @@ func main() {
 
 // reportError prints err as one JSON document on stdout with --json,
 // otherwise as what, why and fix on stderr.
+// A Reported error was already shown.
 func reportError(opts cli.Options, err error) {
+	var reported *term.Reported
+	if errors.As(err, &reported) {
+		return
+	}
 	if opts.JSON {
-		_ = term.WriteErrorJSON(os.Stdout, "dev", err)
+		_ = term.WriteErrorJSON(os.Stdout, cli.Version, err)
 		return
 	}
 

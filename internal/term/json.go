@@ -30,7 +30,12 @@ func WriteErrorJSON(w io.Writer, version string, err error) error {
 		body = errorBody{Code: ue.Code, What: ue.What, Why: ue.Why, Fix: ue.Fix}
 	}
 
-	doc := errorDocument{Kind: "Error", TopsVersion: version, Error: body}
+	return WriteJSON(w, errorDocument{Kind: "Error", TopsVersion: version, Error: body})
+}
+
+// WriteJSON writes doc as one JSON document followed by a newline.
+// <, > and & stay readable: tops output never goes into HTML.
+func WriteJSON(w io.Writer, doc any) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	return enc.Encode(doc)
