@@ -1,981 +1,1616 @@
 # tops implementation plan
 
-Project: tops (Temporal Ops), `github.com/2SSK/tops`. Status: draft. Date: 2026-10-10.
+Project: tops (Temporal Ops), `github.com/2SSK/tops`. Status: draft. Date: 2026-10-23.
 Sibling docs: [PRD](prd.md) · [TRD](trd.md) · [App flow](app-flow.md) · [Design brief](design-brief.md) ·
-[Backend schema](backend-schema.md) · [Concepts](concepts.md)
+[Backend schema](backend-schema.md) · [Concepts](concepts.md) · [Roadmap](roadmap.md)
 
 A build guide in learning order. You build every piece by hand; this file says what to learn before each
-piece, what to build, how to prove it works, and where people usually go wrong. It never gives the code.
-The shapes to build against are in [backend-schema.md](backend-schema.md), the journeys in
-[app-flow.md](app-flow.md), the reasons in the [TRD](trd.md).
-
-**Learn first spine: [concepts.md](concepts.md).** Read it before T1 and come back to it per task. If you
-cannot explain a concept a task names, stop and read its link before typing.
+piece, what to build, how to prove it works, where people usually go wrong, and when to stop. It never gives
+the code. Shapes are in [backend-schema.md](backend-schema.md), flows in [app-flow.md](app-flow.md), rules
+and algorithms in the [TRD](trd.md), output in the [design brief](design-brief.md). **Learn-first spine:
+[concepts.md](concepts.md).**
 
 ## How to use this guide
 
-- Tasks are `T<m>.<n>`, in the order to do them. Each ends with a binary that does a little more and still
-  passes everything before it. Milestones T1-T6 and their acceptance tables are the PRD's.
-- Every task has five parts: **Goal**, **Learn first** (official docs), **Build**, **Verify** (commands that
-  exit non-zero when something is wrong), **Pitfalls**.
-- Test first, every time: write the failing table-driven test, make it pass with the least code, refactor.
-  Merge only with CI green.
-- `make …` runs in the tops repo. Acceptance commands run from the temporal-node-scale repo
-  (`LAB=~/Code/Projects/building/temporalScale`) with the build under test on `PATH`.
-- `jq -e` turns a JSON assertion into an exit code. A bad spec for a negative test lives next to the real
-  one (`cluster.bad.yaml`): spec paths resolve from the spec's directory, so a copy in `/tmp` fails for the
-  wrong reason (no secrets, no keys) and the test passes vacuously.
+- Steps are `P0.<n>` (cleanup) and `T<m>.<n>` (milestones), in build order. Each ends with a binary that does
+  a little more and still passes everything before it; each milestone ends with a release you can demo.
+- Every step has: **Goal** (one sentence), **Learn first** (official docs; read before typing), **Build**
+  (what, not how), **Verify** (commands that exit non-zero when wrong), **Pitfalls**, **Done when** (the
+  checklist that ends the step).
+- Test first: the failing table-driven test, the least code to pass, refactor while green. Merge only with CI
+  green.
+- Go standards for every step: `context.Context` first on every function that does I/O; errors wrapped with
+  `fmt.Errorf("…: %w", err)` and compared with `errors.Is/As`; user-facing failures as `*term.UserError`;
+  logging only through `log/slog`; table-driven tests with `t.Run`; `gocyclo` 10 keeps handlers thin.
+- `make …` runs in the tops repo. Lab commands use `LAB=./lab` (VPSLAB). Commands written `tops -e lab …` run
+  inside a fleet root: the fixture (`TOPS_ROOT=$PWD/internal/fleet/testdata/fleet` until T2.6,
+  `test/e2e/fleet` after) or temporalScale.
+- Every user-visible change adds a CHANGELOG line in the same commit.
+
+## Status (2026-10-23)
+
+27 commits, 2026-10-11 to 2026-10-20; ~1,600 lines of Go including tests; `go vet` and `go test ./...` pass.
+
+| Step  | State   | Commits                                                                                     |
+| ----- | ------- | ------------------------------------------------------------------------------------------- |
+| T1.1  | done    | `a5901f2` design docs, `0d89937` scaffold, `8168dcb` README, `eb03785` Makefile + golangci, `3f12113` root command, `1372039`/`b161210` CI, `69a0413` CHANGELOG |
+| T1.2  | done    | `148d0a6` UserError + exit codes, `ad66e88` signals, `5f330c3` what/why/fix, `d6ea9b7` usage errors, `119fdd8`/`3ed2d84`/`25c7337` marks and colour, `d2817cb` x/sys bump (GO-2026-5024), `59ee519` JSON errors, `e1708ac` `--json`/`--no-color` |
+| T1.3  | done (Oct 10 shape) | `86c0ab3` strict parse, `fceb130` defaults, `309a58c`/`6c6da37`/`b1eff38`/`1f1ac1f` validation, `4a10935` load, `75bcdeb` `validate -f`, `fefb956` `--json` |
+| P0    | **next** | Realign the code with these docs (below)                                                   |
+
+What the review found in the code (each is a Phase 0 step):
+
+| Finding                                                                                      | Step |
+| -------------------------------------------------------------------------------------------- | ---- |
+| `make build` does not set `CGO_ENABLED=0`: a binary built on Arch links glibc and will not run as the helper on Ubuntu 24.04 (CI sets it; the Makefile does not) | P0.1 |
+| `.PHONY` lists `link` instead of `lint`; comment typos in `internal/term` and `internal/spec` (`retruns`, `prined`, `pritned`, `ot only`, `with  a`, `tops keep`) | P0.1 |
+| `bin/` and `coverage.out` sit in the root but are git-ignored (`bin`, `coverage.*`): nothing to fix, `make clean` removes them | P0.1 |
+| `cli.Version` is a `const "dev"`: `-ldflags -X` cannot set a constant, so every release would report `dev` | P0.2 |
+| `validateAccess` checks clients, monitors and admins but not `healthchecks`                   | P0.3 |
+| CHANGELOG uses `## Added` under `## [Unreleased]` (Keep a Changelog wants `###`)              | P0.3 |
+| `spec.Cluster` has `profile` (never validated), `secrets`, `dynamicConfig`, `ui.node`; `testdata/lab.yaml` uses the deleted bash lab (`tscale`, 10.78.0.0/24) | P0.4 |
+| Nodes have no `roles`                                                                        | P0.5 |
+| A persistent `-f/--file` (default `cluster.yaml`) instead of `-e <env>` and a fleet root     | P0.6 |
 
 ## Order and dependencies
 
 ```mermaid
 flowchart LR
-    T1["T1 v0.1.0<br/>read-only"] --> T2["T2 v0.2.0<br/>plan/apply"]
-    T2 --> T3["T3 v0.3.0<br/>bootstrap, nodes"]
-    T3 --> T4["T4 v0.4.0<br/>upgrade"]
-    T4 --> T5["T5 v1.0.0<br/>profile, hardening"]
-    T5 --> M["temporal-node-scale M1-M4"]
-    M --> R0["temporal-role-scale R0 (lab)"]
-    R0 --> T6["T6 v2.0.0<br/>roles, Cassandra, ES"]
-    T5 --> T6
+    P0["P0<br/>cleanup and<br/>realign"] --> T1["T1 v0.1.0<br/>spec, catalog,<br/>diff (offline)"]
+    T1 --> T2["T2 v0.2.0<br/>measure, reach,<br/>size, plan"]
+    T2 --> T3["T3 v0.3.0<br/>bootstrap, status"]
+    T3 --> T4["T4 v0.4.0<br/>apply, rollback,<br/>drift, promote"]
+    T4 --> T5["T5 v0.5.0<br/>top, logs, audit,<br/>pprof, investigate"]
+    T5 --> T6["T6 v0.6.0<br/>edges, ui, node and<br/>role changes"]
+    T6 --> T7["T7 v0.7.0<br/>upgrade"]
+    T7 --> T8["T8 v1.0.0<br/>hardening"]
+    T8 --> T9["T9 v1.1.0<br/>--at, run"]
+    T8 --> T10["T10 v2.0.0<br/>Cassandra + ES"]
 ```
 
-## The lab contract
+## The lab contract (VPSLAB)
 
-tops' e2e suite runs against another repo's lab. It may use only this, so either side can change
-everything else:
+The e2e suite may use only this from `./lab` (the user's VPSLAB repo, git-ignored in tops):
 
-| From temporal-node-scale                                              | Used for                         | Until                                   |
-| --------------------------------------------------------------------- | -------------------------------- | --------------------------------------- |
-| `make up`, `make check`, `make reset`, `make ssh ARGS='<short> <cmd>'` | Setup, preconditions             | Always                                  |
-| `make push`                                                           | Bash-built fixture (T1, T2)      | T3.9 removes the fixture                |
-| Container names `tscale-01..03`, `tscale-pg`; `docker kill/stop/start <name>` | Failure injection        | Always. Never `make kill`: it arrives at node-scale M2 |
-| IPs 10.78.0.11-13, 10.78.0.20; `lab/keys/`                            | The e2e spec                     | Always                                  |
-| `LAB=<path>`                                                          | Harness parameter                | The repo rename (node-scale Q1) changes only this path |
+| From VPSLAB                                                         | Used for                               |
+| ------------------------------------------------------------------- | -------------------------------------- |
+| `make up`, `make down`, `make reset`, `make test`                   | Node lifecycle                         |
+| An untracked `compose.override.yaml` (Compose merges it automatically) | CPU and memory caps of every node and of `vps-pg`; tops ships it as `test/e2e/vpslab.override.yaml` |
+| Compose profile `pg` (`vps-pg`, postgres:17.11, 10.80.0.20, `max_connections` 300) | PostgreSQL. Today an uncommitted change in VPSLAB's `compose.yaml`: commit it there first (PRD Q19) |
+| Containers `vps-01..03`, `vps-pg`; `docker stop/start/kill`         | Failure injection                      |
+| 10.80.0.11-13, gateway 10.80.0.1 (the workstation)                  | The e2e spec                           |
+| `keys/id_ed25519`; `keys/known_hosts` with a line per node address (`10.80.0.1x`), rewritten by `make up` | SSH |
 
-From temporal-role-scale (T6): `make up/check/reset/ssh/kill/revive`, short names (`hist-2`, `cass-2`),
-10.80.0.0/24. The harness checks the contract first and fails with "lab contract broken: …".
+tops make targets wrap it: `make lab-up` (copy the override, `make -C lab up`, then
+`docker compose --project-directory lab --profile pg up -d --wait vps-pg`), `make lab-renew`
+(`make -C lab reset`, then `lab-up`: new nodes and new host keys, PostgreSQL data kept), `make lab-reset`
+(`vps-pg` down with its volume, then `lab-renew`), `make lab-down`. The harness checks the contract first and
+fails with `lab contract broken: …`.
+
+**One cluster at a time.** tops' e2e fixture (cluster `tops-e2e`) and temporalScale's `lab` environment
+(cluster `tscale-lab`) use the same containers and the same `vps-pg` (PRD D22). Every e2e run starts with
+`make lab-reset`; afterwards temporalScale's lab is rebuilt with its own `tops -e lab bootstrap`. See the
+temporalScale TRD constraints for the other rule about who may use these containers.
+
+**Memory budget.** tops sizes every role up to its node's cap; it cannot see the workstation, so if the sum of
+all caps exceeds the workstation's free memory, the host overcommits and every number tops reads (and every
+measurement) is wrong. The reference workstation has 15 GiB with a desktop running and 4.5–6 GiB free. Caps
+(decided by T2.1's measurements; these are the starting proposal):
+
+| Container                         | CPUs | Memory cap | Runs                                    |
+| --------------------------------- | ---- | ---------- | --------------------------------------- |
+| vps-01                            | 1.5  | 1.25 GiB   | frontend, history, matching, worker (ui from T6) |
+| vps-02                            | 1.5  | 1.25 GiB   | frontend, history, matching, worker     |
+| vps-03                            | 1    | 768 MiB    | frontend, matching                      |
+| vps-pg                            | 1    | 512 MiB    | PostgreSQL, capped like a small database host; size set in T2.1b from measurements, not to force a bottleneck |
+| monitoring (temporalScale's)      | -    | 512 MiB    | Prometheus, Grafana, cAdvisor, host node_exporter (4 containers) |
+| **v1 lab total**                  |      | **4.25 GiB** | fits the 4.5 GiB lower bound          |
+
+The v2 lab (`lab-cass`) stops vps-03 and vps-pg and adds `vps-cass-1..3` (768 MiB each, 256 MB heap; measured
+~550 MiB idle) and `vps-es` (768 MiB, 256 MB heap; ~670 MiB idle): 2.5 + 2.25 + 0.75 + 0.5 = **6 GiB**, the
+upper bound. Run it with the desktop light, or with monitoring stopped (5.5 GiB).
 
 ## Repository layout and make targets
 
 ```
-cmd/tops/            internal/…  (TRD "Package layout")
-test/helper/Dockerfile            Ubuntu 24.04 + systemd + sshd + deploy user (copy of the node-scale lab image)
-test/e2e/                         //go:build e2e
-.github/workflows/ci.yml, release.yml
-.golangci.yml  .goreleaser.yaml  Makefile  README.md  AGENTS.md  LICENSE  CHANGELOG.md
+cmd/tops/  internal/…           (TRD "Package layout")
+tools/cataloggen/               own go.mod; the catalog generator (T1.6)
+test/helper/Dockerfile          Ubuntu 24.04 + systemd + sshd + deploy user (T2.3)
+test/e2e/                       //go:build e2e; fleet/ fixture; vpslab.override.yaml; vpslab.v2.override.yaml
+.github/workflows/ci.yml, release.yml   .golangci.yml  .goreleaser.yaml  Makefile  CHANGELOG.md
+.cache/                         git-ignored: Temporal source checkouts for the generator
 ```
 
-| Make target              | Runs                                                                                           |
-| ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `make build`             | `go build -trimpath -o bin/tops ./cmd/tops`                                                    |
-| `make build-linux`       | linux/amd64 and linux/arm64 helpers for development builds on another platform               |
-| `make lint`              | `gofmt -l` (must be empty), `golangci-lint run`                                                |
-| `make test`              | `go test -race -coverprofile=coverage.out ./...`                                               |
-| `make cover`             | Coverage gates: >= 80% overall, >= 90% `internal/safety` and `internal/plan`                   |
-| `make helper-test`       | Build `test/helper`, start two privileged systemd containers, `go test -tags helper ./internal/helper/...` over real SSH |
-| `make e2e LAB=…`         | `go test -tags e2e -timeout 60m ./test/e2e/... -lab=$(LAB)`; writes `e2e-report.txt` and `e2e-report.json` |
-| `make vuln`              | `govulncheck ./...`                                                                            |
+| Target             | Runs                                                                        | Exists |
+| ------------------ | --------------------------------------------------------------------------- | ------ |
+| `make build`       | `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X …Version=$(VERSION)" -o bin/tops ./cmd/tops` | yes; flags P0.1-P0.2 |
+| `make test`        | `go test -race -coverprofile=coverage.out ./...`                            | yes    |
+| `make lint`        | `golangci-lint run` (gofmt as a formatter)                                  | yes    |
+| `make vuln`        | `govulncheck ./...`                                                         | yes    |
+| `make check`       | lint, test, vuln                                                            | yes    |
+| `make clean`       | removes `bin/`, `coverage.out`                                              | yes    |
+| `make generate`    | source checkouts, `tools/cataloggen` per minor, then `git diff --exit-code internal/catalog` | T1.6 |
+| `make cover`       | Gates: >= 80% overall; >= 90% `safety`, `plan`, `sizing`                    | T1.10  |
+| `make build-linux` | linux/amd64 and linux/arm64 helpers into `bin/`                             | T2.3   |
+| `make helper-test` | systemd containers from `test/helper`, `go test -tags helper` over real SSH | T2.3   |
+| `make lab-up`, `lab-renew`, `lab-reset`, `lab-down` | VPSLAB lifecycle (above)                   | T2.1   |
+| `make e2e`         | `go test -tags e2e -timeout 60m ./test/e2e/... -lab=$(LAB)`; writes `e2e-report.{txt,json}` | T2.6 |
 
-## T1: read-only tops (v0.1.0)
+# Phase 0: cleanup and realign
 
-### T1.1 Repo, toolchain and CI
+The code was written against the Oct 10 design. Phase 0 makes it match these docs before anything new is
+built on it (PRD D25). Six small steps, 3-5 days. After P0, `tops -e lab validate` runs against a fleet root
+and a spec with roles; everything else waits for T1.
 
-**Goal.** An empty `tops` that builds, lints and tests in CI.
+### P0.1 Build and repo hygiene
+
+**Goal.** `make build` produces the same static binary CI does, and the tree has no stale typos.
 
 **Learn first.**
-- Go modules and toolchains: https://go.dev/doc/modules/managing-dependencies, https://go.dev/doc/toolchain
-- Cobra (commands, groups, `Use`/`Short`/`Long`/`Example`): https://cobra.dev/
-- golangci-lint configuration: https://golangci-lint.run/usage/configuration/
-- GitHub Actions workflow syntax: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+- cgo and `CGO_ENABLED`: https://pkg.go.dev/cmd/cgo ; why a cgo binary needs the build machine's glibc:
+  https://go.dev/doc/install/source#environment
+- `go build` flags (`-trimpath`, `-ldflags`): https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+- `.PHONY`: https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
+- `git check-ignore`: https://git-scm.com/docs/git-check-ignore
 
-**Build.** `go.mod` (`go 1.26`), `cmd/tops/main.go` with the root command and grouped help (design brief
-"Command grammar"), the Makefile above, `.golangci.yml` with the linters in "CI" below, `ci.yml` with the
-jobs in "CI", README stub, CHANGELOG.
+**Build.**
+- `Makefile`: `.PHONY` lists `lint` (not `link`); `build` exports `CGO_ENABLED=0`.
+- Fix the comment typos listed in "Status".
+- Confirm `bin/` and `coverage.out` are ignored; delete them from the working tree with `make clean`.
 
 **Verify.**
 ```sh
-make lint && make test && make build && ./bin/tops --help | grep -q 'Look'
-test $(stat -c %s bin/tops) -lt 36700160          # 35 MB CI gate
-```
-Push a branch: every CI job green.
-
-**Pitfalls.**
-- `go.temporal.io/server` v1.31.3 needs Go >= 1.26.8: pin the `toolchain` line, not just `go 1.26`.
-- Do not add dependencies a task does not use yet; each later task adds its own.
-- `gocyclo` max 10 bites command handlers first: keep them thin, logic in `internal/`.
-
-### T1.2 Output, errors, exit codes
-
-**Goal.** One package renders tables, symbols, JSON and errors; one function maps errors to exit codes.
-
-**Learn first.**
-- Command Line Interface Guidelines (output, errors, stdout vs stderr): https://clig.dev/
-- `NO_COLOR`: https://no-color.org/ ; lipgloss tables: https://pkg.go.dev/github.com/charmbracelet/lipgloss/table
-- Design brief "Output design", "Errors"; TRD "Exit codes", "Error model".
-
-**Build.** `internal/term`: `UserError{Code, What, Why, Fix}`, the JSON writer (`kind`, `topsVersion`),
-symbol fallback for non-UTF-8 locales, progress on stderr. `main` maps errors to exit codes 0-5 and 130.
-
-**Verify.**
-```sh
-go test -race ./internal/term/...                       # golden: colour, NO_COLOR, non-UTF-8
-./bin/tops --json validate -f /nonexistent; test $? -eq 4
-./bin/tops --json validate -f /nonexistent | jq -e '.kind == "Error" and .error.code != null'
-```
-
-**Pitfalls.** Anything besides the one JSON document on stdout breaks every script. `text/tabwriter`
-counts ANSI escapes as width. An error that prints only a gRPC status is not an error message.
-
-### T1.3 Spec, secrets, profiles; `validate` and `init`
-
-**Goal.** tops reads `cluster.yaml` and `secrets.env`, applies defaults, and reports every error with its
-path and line.
-
-**Learn first.**
-- `go.yaml.in/yaml/v3` `Decoder.KnownFields`, `yaml.Node`: https://pkg.go.dev/go.yaml.in/yaml/v3
-- Backend schema "Cluster spec", "Secrets file", "Profiles" (`memoryMiB`); TRD "Loading".
-- Temporal history shards (why `shards` is fixed): https://docs.temporal.io/temporal-service/temporal-server
-
-**Build.** `internal/spec` (types, `Defaults`, `Validate` returning every error, the 15-line secrets
-parser, mode and owner check), `internal/profile` (embedded profiles, headroom math), `tops validate`,
-`tops init`.
-
-**Verify.**
-```sh
-go test -race -cover ./internal/spec/... ./internal/profile/...
-cd $LAB && tops validate; test $? -eq 0
-sed 's/shards: 512/shards: 0/' cluster.yaml > cluster.bad.yaml
-tops validate -f cluster.bad.yaml --json | jq -e '[.errors[] | select(.path == "shards")] | length == 1'
-chmod 644 secrets.env; tops validate; test $? -eq 4; chmod 600 secrets.env; rm cluster.bad.yaml
+make clean build && ! ldd bin/tops 2>/dev/null | grep -q libc        # "not a dynamic executable"
+git check-ignore -q bin/tops coverage.out
+grep -n '^\.PHONY' Makefile | grep -qw lint
+make check
 ```
 
 **Pitfalls.**
-- dotenv libraries expand `$VAR`: a password with `$` silently changes. Hence the hand parser.
-- Return all errors, not the first: the operator fixes a spec in one pass.
-- Durations need `d` (`7d`); retention below 1h is invalid (Temporal's local minimum).
+- `tops` imports `net` (through cobra today, `x/crypto/ssh` later); with cgo on, the resolver links libc and
+  the binary fails on Ubuntu 24.04 with `GLIBC_2.xx not found` when built on a newer distro. CI hides this
+  because it sets the variable itself.
+- `misspell` only knows common misspellings; it did not catch `retruns`.
 
-### T1.4 Node helper and wire protocol (read-only ops)
+**Done when.** `make check` is clean; `bin/tops` is static; `git status` shows only intended changes.
 
-**Goal.** `tops node hello|facts|top|journal` runs as root, reads one JSON request on stdin and writes one
-typed response.
+### P0.2 Version from the build
+
+**Goal.** `tops version` prints the version the binary was built as, with commit and Go version.
 
 **Learn first.**
-- cgroup v2 (`memory.current/high/max/events`, `cpu.stat`, `cpu.max`, `cpuset.cpus.effective`):
-  https://docs.kernel.org/admin-guide/cgroup-v2.html ; PSI: https://docs.kernel.org/accounting/psi.html
-- `proc(5)` (`/proc/<pid>/cgroup`, `/proc/<pid>/exe`): https://man7.org/linux/man-pages/man5/proc.5.html
-- go-systemd D-Bus: https://pkg.go.dev/github.com/coreos/go-systemd/v22/dbus
-- `journalctl -o json`: https://www.freedesktop.org/software/systemd/man/latest/journalctl.html
-- Backend schema "Node helper protocol".
+- Linker `-X`: https://pkg.go.dev/cmd/link (it sets string variables, never constants)
+- `runtime/debug.ReadBuildInfo` and its `vcs.*` settings: https://pkg.go.dev/runtime/debug#BuildInfo
+- `git describe`: https://git-scm.com/docs/git-describe ; semver: https://semver.org/
 
-**Build.** `internal/wire` (envelope, op types), `internal/helper`: root check, stdin decoding, exit 0/1/2;
-`hello` with effective cores and memory (TRD "Host limits"), `facts` (file hashes, content only when the
-hash differs, units, `current`, firewall via go-iptables), `top`, `journal` (stream, cancel on stdin EOF).
+**Build.**
+- `internal/cli`: the version becomes a package `var` (default `dev`); every `--json` document already reads
+  it.
+- `Makefile`: `VERSION ?= $(shell git describe --tags --always --dirty)` passed with `-X`; `-s -w`.
+- `tops version`: `tops <version> (<commit[:7]>, <go version>)`; `--json` `Version` document
+  (`tops: {version, commit, goVersion}`). Commit and Go version from `ReadBuildInfo`.
 
 **Verify.**
 ```sh
-go test -race ./internal/wire/... ./internal/helper/...   # cgroup trees and journal lines as testdata
-```
-(It runs on real hosts in T1.5.)
-
-**Pitfalls.**
-- In a lab container `nproc` and `/proc/meminfo` are the workstation's. The effective limits come from PID
-  1's cgroup (`memory.max`, `cpuset.cpus.effective`, `cpu.max`); `max` means unlimited.
-- Find a unit's cgroup through `/proc/<MainPID>/cgroup`, not the `ControlGroup` property: under
-  `cgroup: host` the paths differ.
-- Arguments arrive on stdin, never argv: argv shows in `ps` and the sudo log.
-
-### T1.5 SSH, helper upload, helper test image
-
-**Goal.** tops connects to every node with strict host keys, checks sudo and forwarding, uploads the helper
-once per version and runs it.
-
-**Learn first.**
-- `golang.org/x/crypto/ssh`, `ssh/knownhosts`, `ssh/agent`: https://pkg.go.dev/golang.org/x/crypto/ssh
-- SSH connection protocol, `direct-tcpip` forwarding: https://www.rfc-editor.org/rfc/rfc4254#section-7.2
-- `sshd_config` `AllowTcpForwarding`: https://man.openbsd.org/sshd_config ; `known_hosts` format:
-  https://man.openbsd.org/sshd#SSH_KNOWN_HOSTS_FILE_FORMAT
-- `sudo -n`: https://www.sudo.ws/docs/man/sudo.man/
-
-**Build.** `internal/remote` per TRD "Workstation <-> SSH <-> helper protocol": clients, `HostKeyAlgorithms`
-from known_hosts, keepalive, preflight, tunnels with `DialContext`, the fixed upload command, newest-3
-cleanup after an upload. `test/helper` image and `make helper-test` (two privileged systemd containers).
-
-**Verify.**
-```sh
-make helper-test                                    # hello over real SSH; upload once; changed key refused
-cd $LAB && tops version --json | jq -e 'all(.nodes[]; .sha256Match)'
-tops status --debug 2>&1 | grep -c 'helper upload'  # 0 on the second run
+make build && bin/tops version | grep -v ' dev '
+bin/tops version --json | jq -e '.kind == "Version" and .tops.version != "dev" and (.tops.commit | length) > 0'
+go run ./cmd/tops version | grep -q ' dev '                         # unstamped builds say dev
 ```
 
 **Pitfalls.**
-- Never trust on first use. A changed key after `make reset` is expected; the fix is rewriting
-  `known_hosts`, not `accept-new`.
-- Validate `<v>` against `^[0-9A-Za-z.+-]+$` before it goes into the `sh -c` string.
-- A server offering ECDSA first fails against a stored ed25519 key unless you set `HostKeyAlgorithms`.
+- `-X` with a wrong import path or on a constant is silently ignored. Test the built binary, not a unit test.
+- `go test` binaries carry no VCS stamp; keep the build-info reading behind a small function you can feed in
+  tests.
 
-### T1.6 Temporal and PostgreSQL reads over tunnels
+**Done when.** Built binaries report `git describe`; `--json` has a `Version` document; CHANGELOG has a line.
 
-**Goal.** tops reads health, rings, shard ownership, identity and schema versions through SSH tunnels.
+### P0.3 `healthchecks` validation and CHANGELOG hygiene
+
+**Goal.** All four `access` lists are validated; the CHANGELOG follows Keep a Changelog.
 
 **Learn first.**
-- Temporal server architecture, roles, membership: https://docs.temporal.io/temporal-service/temporal-server
-- gRPC health checking protocol: https://github.com/grpc/grpc/blob/master/doc/health-checking.md
-- `grpc.WithContextDialer`: https://pkg.go.dev/google.golang.org/grpc#WithContextDialer
-- Admin API (`DescribeCluster`, `DescribeHistoryHost`): `go.temporal.io/server/api/adminservice/v1`
-- pgx `DialFunc`: https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#Config
+- Table-driven tests: https://go.dev/wiki/TableDrivenTests
+- Keep a Changelog 1.1.0: https://keepachangelog.com/en/1.1.0/
 
-**Build.** `internal/cluster` (one lazy `grpc.ClientConn` per node, `Serving`, `Describe`, `Shards`);
-`internal/datastore/postgres` (reachable, `schema_version`, `cluster_metadata_info` name and `cluster_id`
-from the `data` blob, `max_connections`, `pg_stat_activity`).
+**Build.**
+- A failing row in `validate_test.go` (`access.healthchecks[0]` not an address; a duplicate), then the one
+  missing call in `validateAccess`.
+- CHANGELOG: `## Added` → `### Added`; capitalise each entry; add the `[Unreleased]` link at the bottom.
+  Nothing is released yet, so later P0 steps rewrite unreleased entries in place (`validate -f` becomes
+  `validate` with `-e`); there is no "Removed" entry for a flag no release ever had.
 
 **Verify.**
 ```sh
-go test -race ./internal/cluster/... ./internal/datastore/...      # fakes for the gRPC services
-go test -tags e2e -run 'TestReads' ./test/e2e/... -lab=$LAB         # against the bash-built lab
+go test -race -run TestValidate ./internal/spec/... -v | grep -q healthchecks
+grep -q '^### Added' CHANGELOG.md && ! grep -q '^## Added' CHANGELOG.md
+```
+
+**Pitfalls.** Write the test first and watch it fail; a validator that is never called passes every test
+that does not exercise it, which is how this one slipped.
+
+**Done when.** The new rows pass; `make check` clean.
+
+### P0.4 Remove obsolete spec fields; VPSLAB test data
+
+**Goal.** `spec.Cluster` holds only fields these docs define for this stage.
+
+**Learn first.**
+- Backend schema "Fields" (the `Since` column) and the "Removed in P0.4" note.
+- AGENTS.md: no compatibility layers.
+
+**Build.**
+- Delete `Profile`, `Secrets`, `DynamicConfig`, the `UI` type and field, `validateUI`, and the `Secrets` and
+  `DynamicConfig` defaults (and `nodeExists` if nothing else uses it).
+- Replace `internal/spec/testdata/lab.yaml` with VPSLAB values: cluster `tops-e2e`, `10.80.0.x`, user
+  `deploy`, the lab keys by `~` path; no deleted fields.
+- A test row proving `profile:` and `ui:` are now unknown keys (exit 4 with a line).
+
+**Verify.**
+```sh
+go test -race ./...
+! grep -rnE 'Profile|DynamicConfig|10\.78\.|tscale' internal/
+```
+
+**Pitfalls.** Keeping `ui` "because it comes back in T6" is the compatibility layer AGENTS.md forbids: it
+returns as a role, with a different shape (D24).
+
+**Done when.** No obsolete field or test value remains; tests green.
+
+### P0.5 Roles per node
+
+**Goal.** Every node lists the Temporal roles it runs, and the spec says when a role runs nowhere.
+
+**Learn first.**
+- The four roles: https://docs.temporal.io/temporal-service/temporal-server ; concepts "The four roles",
+  "One unit per role".
+
+**Build.**
+- `Node.Roles []string` (`yaml:"roles"`).
+- One ordered role list in `internal/spec` (frontend, history, matching, worker): it will drive stage
+  order, ports, sizing and completion, so it exists once.
+- Rules: non-empty; each from the list; no duplicates (`nodes[1].roles[2]: history is also nodes[1].roles[0]`);
+  cluster-wide, each role on at least one node (`nodes: no node runs history`).
+- Fixture: vps-01 and vps-02 all four, vps-03 frontend and matching.
+
+**Verify.**
+```sh
+go test -race -cover ./internal/spec/...   # rows: missing roles, empty, unknown ("matchng"), duplicate, no history anywhere, ui (not yet a role)
 ```
 
 **Pitfalls.**
-- SERVING is per service name: `temporal.api.workflowservice.v1.WorkflowService`, not the empty string.
-- Each node's `DescribeCluster` is that node's view of the ring. Views can disagree (a partition); keep
-  them separate, never merge them.
-- `cluster_metadata_info.data` is a protobuf blob: decode it with Temporal's type, do not parse bytes.
+- Role names are lowercase and exact; do not accept `History`.
+- Do not add `ui` yet (T6.2) or `pin` (T2.4): `validate` must never accept what tops cannot do (D24).
 
-### T1.7 `tops status`
+**Done when.** All rows pass; the fixture validates; the error messages list the allowed roles.
 
-**Goal.** One command answers "is the cluster whole?" in under 3 s, in a table and in JSON.
+### P0.6 `-e` replaces `-f`: fleet root and environments
 
-**Learn first.** Design brief "`tops status`"; backend-schema "`Status` example"; TRD "Exit codes".
-
-**Build.** Status assembly (parallel per node), checks with symbols, exit 5 on a failed check.
-
-**Verify.** T1 acceptance rows "Status on the bash-built lab" and "Status exits 5".
-
-**Pitfalls.** An unreachable node is a finding (exit 5), not a crash (exit 1). Never print "healthy" when a
-value could not be read.
-
-### T1.8 Metrics and `tops audit`
-
-**Goal.** Two scrapes of every node, one line per layer, the first marked line says where to look.
+**Goal.** `tops -e <env> validate` loads `environments/<env>/cluster.yaml` from the fleet root; `-f` is gone.
 
 **Learn first.**
-- Exposition format: https://prometheus.io/docs/instrumenting/exposition_formats/
-- Histograms and quantiles: https://prometheus.io/docs/practices/histograms/
-- `expfmt`: https://pkg.go.dev/github.com/prometheus/common/expfmt
-- Temporal cluster metrics: https://docs.temporal.io/references/cluster-metrics
-- tadm `audit.sh` (layers and thresholds to port).
+- How git finds its root by walking up: https://git-scm.com/docs/git-rev-parse#Documentation/git-rev-parse.txt---show-toplevel
+- `path/filepath` (`Dir`, `Join`, `Abs`), `os.Stat`, `io/fs`: https://pkg.go.dev/path/filepath , https://pkg.go.dev/io/fs
+- Cobra persistent flags and `PersistentPreRunE`: https://pkg.go.dev/github.com/spf13/cobra#Command
+- Testing without process globals (`t.Setenv` vs injection): https://pkg.go.dev/testing#T.Setenv
+- TRD "Fleet root and environments".
 
-**Build.** `internal/metrics` (scrape, deltas, quantiles from bucket deltas), `internal/audit` (layers,
-verdicts, advice), fixtures recorded from the lab under omes load for 1.31.3 and 1.30.7, `tops audit`.
+**Build.**
+- `internal/fleet`: `FindRoot(cwd, getenv)` (`TOPS_ROOT`, else walk up to a directory containing
+  `environments/`); `Environments(root)` (sorted names matching `^[a-z][a-z0-9-]{0,30}$`);
+  `Load(root, env)` returning the cluster and its file path, with `ssh.key`/`ssh.knownHosts` expanded (`~`)
+  and resolved relative to the environment directory. Errors `spec.no_root`, `spec.no_env` (listing the
+  environments found).
+- `internal/spec`: `Load(path)` and its "pass -f" fix text go; `fleet` reads the file and calls `Parse`, and
+  error texts name the real file instead of the literal `cluster.yaml`.
+- `internal/cli`: `Options.File` and the persistent `--file/-f` flag are deleted; `Options.Env` with a
+  persistent `-e/--env`; `Options.Getenv` and `Options.Getwd` injected (`main` passes `os.Getenv`,
+  `os.Getwd`). `validate` requires `-e` (`usage.invalid` listing the environments); `completion` refuses it.
+- `validate` output: `✓ environments/lab is valid: cluster tops-e2e, 3 nodes, 10 roles`; the `Validation`
+  document gains `env` and `cluster`.
+- Fixture fleet `internal/fleet/testdata/fleet/` with `base/` (empty files) and `environments/lab/` (the P0.5
+  spec) and `environments/staging/` (same shape, cluster `tops-e2e-staging`, other addresses). The CLI tests
+  move from `-f testdata/…` to this root.
 
 **Verify.**
 ```sh
-go test -race -cover ./internal/metrics/... ./internal/audit/...   # healthy, history behind, db slow, idle, missing
+go test -race -cover ./internal/fleet/... ./internal/cli/...
+make build && export TOPS_ROOT=$PWD/internal/fleet/testdata/fleet
+bin/tops -e lab validate; test $? -eq 0
+bin/tops validate; test $? -eq 4                                   # no -e: names lab, staging
+bin/tops -e nope validate --json | jq -e '.error.code == "spec.no_env"'
+bin/tops validate -f x 2>&1 | grep -q 'unknown shorthand flag'     # -f is gone
+(unset TOPS_ROOT; cd /tmp && ~/Code/Projects/building/tops/bin/tops -e lab validate --json | jq -e '.error.code == "spec.no_root"')
 ```
-T1 acceptance row "Audit names the busiest layer".
 
 **Pitfalls.**
-- A counter that went down between samples is a restart: treat it as a reset, not a negative rate.
-- Long polls (`Poll*`) are waiting, not work: exclude them from latency.
-- A missing metric is "metric missing", never green (PRD R5).
+- A default environment, or a `TOPS_ENV` variable, is the classic way to apply to production by accident.
+  Do not add one.
+- Resolve spec paths from the environment directory, not the working directory: tops runs from anywhere
+  inside the fleet repo.
+- Stop the upward walk at the filesystem root; a symlinked working directory walks the link's parents.
 
-### T1.9 `tops top`
+**Done when.** No `File`/`-f` anywhere in `internal/cli`; all CLI tests use the fixture root; CHANGELOG
+entries rewritten; temporalScale can validate its `environments/lab` once it has written one with roles.
 
-**Goal.** Per node: cgroup CPU, memory vs MemoryHigh/Max, Go heap vs GOMEMLIMIT, pressure, OOM kills.
+# T1: spec, environments, settings catalog (v0.1.0)
 
-**Learn first.** Go GC guide (GOMEMLIMIT is a soft limit; MemoryMax is not): https://go.dev/doc/gc-guide ;
-cgroup v2 `memory.events`.
+Offline only: nothing in T1 connects to a node. Demo in temporalScale: `tops -e lab validate`,
+`tops knobs cacheTTL`, `tops diff lab staging -v`.
 
-**Build.** `tops top [<node>|--all] [-w N]` from helper `top` plus `memory_heap`, `num_goroutines` over a tunnel.
+### T1.1 Repo, toolchain and CI — done
+
+**Goal.** A Go module with lint, test, vuln and cross-build in CI. **Done** in the commits above: `go 1.26.0`
+with `toolchain go1.26.8`; jobs lint, test, vuln, build (linux/amd64, linux/arm64, darwin/arm64) with the
+35 MB size gate. **Done when** (met): CI green on `main`.
+
+### T1.2 Output, errors, exit codes — done
+
+**Goal.** Every failure prints what/why/fix or one JSON document and exits with a documented code. **Done**:
+`internal/term` (`UserError`, `ExitCode`, `PrintError`, `WriteErrorJSON`, marks, colour detection,
+`Reported`), `cmd/tops` signal handling. T1.9 adds the `pending.` and `unhealthy.` prefixes to `ExitCode`.
+**Done when** (met): exit codes 0/1/3/4/130 tested.
+
+### T1.3 Spec v0 and `validate` — done (realigned in P0)
+
+**Goal.** `cluster.yaml` parsed strictly and validated with every problem reported. **Done**: `Parse` with
+`KnownFields`, `Defaults`, `Validate` returning every `Problem`, `ParseDuration` with `d`,
+`validate [--json]`. P0.3-P0.6 changed its shape. **Done when** (met).
+
+### T1.4 Problems carry lines
+
+**Goal.** Every validation problem names its file and line (H5).
+
+**Learn first.**
+- `yaml.Node` (kinds, `Line`, `Content` pairs in mappings): https://pkg.go.dev/go.yaml.in/yaml/v3#Node
+- `yaml.TypeError` (strict-decode errors are strings starting `line N:`): https://pkg.go.dev/go.yaml.in/yaml/v3#TypeError
+- Golden files: https://pkg.go.dev/testing (the `-update` flag pattern)
+
+**Build.**
+- `Problem` gains `Line` (and `File`, used for settings files from T1.8).
+- After the strict decode, decode once more into a `yaml.Node`; a path walker maps `nodes[2].roles[1]` to the
+  node's line; a missing key reports its parent's line.
+- Strict-decode failures (unknown keys, wrong types) become problems too: parse the `line N: …` prefix of
+  each `TypeError` entry, with a test that pins that format.
+- Human output: `✗ <file>:<line>  <path>  <message>`, then the `spec.invalid` summary (design brief).
+- `testdata/bad/*.yaml` fixtures, one per rule, with golden output (human and JSON).
 
 **Verify.**
 ```sh
-cd $LAB && tops top --all --json | jq -e 'all(.nodes[]; .top.memHighBytes > 0 and .goHeapBytes > 0)'
+go test -race ./internal/spec/... ./internal/cli/...
+for f in internal/spec/testdata/bad/*.yaml; do … ; done   # via the golden test, not by hand
+bin/tops -e bad validate --json | jq -e 'all(.errors[]; .path != "" and .line > 0)'   # bad env in the fixture fleet
 ```
 
-**Pitfalls.** `memory.high` = `max` means unset. `oom_kill` in `memory.events` counts kills inside the
-cgroup; the kernel log has the rest.
+**Pitfalls.**
+- `yaml.Node.Decode` ignores `KnownFields`; keep the strict decoder for the struct and use the node only for
+  lines.
+- Mapping nodes store keys and values alternately in `Content`; flow style (`{ name: x }`) has lines too.
 
-### T1.10 `tops logs`
+**Done when.** Every bad fixture has a golden file; every problem has `line > 0` except "missing required
+key" rows, which carry the parent's line.
 
-**Goal.** Readable logs from every node, merged by time, with the flags of design brief "Global flags".
+### T1.5 Secrets file
 
-**Learn first.** journalctl JSON fields (`MESSAGE`, `__REALTIME_TIMESTAMP`); Temporal's zap JSON lines
-(look at `journalctl -u temporal -o json` on a node).
+**Goal.** `environments/<env>/secrets.env` is read safely, checked by `validate`, and never printed.
 
-**Build.** `internal/journal` (format, filters, merge, summary), `tops logs`.
+**Learn first.**
+- `stat(2)`, mode and owner: https://man7.org/linux/man-pages/man2/stat.2.html ; `io/fs.FileMode`:
+  https://pkg.go.dev/io/fs#FileMode ; `syscall.Stat_t` for the uid: https://pkg.go.dev/syscall#Stat_t
+- `slog.LogValuer`: https://pkg.go.dev/log/slog#LogValuer ; `fmt.Stringer`
+- Why dotenv expansion breaks passwords: the `$` handling in any dotenv library's README.
 
-**Verify.** T1 acceptance row "Logs merged from both nodes".
+**Build.** In `internal/fleet`: the file check (regular, 0600, owner = current uid → `secrets.mode`), the
+hand parser (backend schema grammar → `secrets.invalid` with line), required keys per persistence kind; an
+`internal/secret` `Value` type whose `String()`, `GoString()`, `Format()` and `LogValue()` print `***`, with
+an explicit `Reveal()` used only where the value is rendered. `validate` checks the file; other commands read
+it only when they connect.
 
-**Pitfalls.** Lines that are not JSON still print. Merge by the log's own `ts`, and remember each node has
-its own clock. Follow mode ends cleanly on Ctrl-C (stdin EOF to the helper).
+**Verify.**
+```sh
+go test -race ./internal/fleet/... ./internal/secret/...   # rows: 0644, other owner, symlink, $ in value, quotes, unknown key, missing key
+chmod 644 $TOPS_ROOT/environments/lab/secrets.env; bin/tops -e lab validate; test $? -eq 4; chmod 600 $TOPS_ROOT/environments/lab/secrets.env
+```
 
-### T1.11 `tops investigate`
+**Pitfalls.**
+- git does not keep 0600: tests create the fixture's secrets file in `t.TempDir()` with the mode they need.
+- A test that formats a `Value` with `%v`, `%+v`, `%#v` and `slog` must see `***` every time.
 
-**Goal.** A workflow report from a UI URL, written to a file.
+**Done when.** Every row passes; no code path prints a secret; CHANGELOG line.
 
-**Learn first.** Workflow execution and event history: https://docs.temporal.io/workflow-execution ;
-task queues: https://docs.temporal.io/task-queue ; the UI URL shape `/namespaces/<ns>/workflows/<id>[/<run>]`.
+### T1.6 Settings catalog generator and `tops knobs`
 
-**Build.** `internal/investigate` (URL parsing, report sections per app-flow journey 8), `tops investigate`.
+**Goal.** Every dynamic-config key of Temporal 1.31 is searchable offline: key, roles, default, meaning.
 
-**Verify.** T1 acceptance row "Investigate from a UI URL".
+**Learn first.**
+- `go generate`: https://go.dev/blog/generate ; multi-module repositories:
+  https://go.dev/doc/modules/managing-source#multiple-module-source
+- `go/packages`: https://pkg.go.dev/golang.org/x/tools/go/packages ; `go/types` tutorial:
+  https://github.com/golang/example/tree/master/gotypes ; `go/constant`: https://pkg.go.dev/go/constant
+- Temporal dynamic config: https://docs.temporal.io/references/dynamic-configuration ; read
+  `common/dynamicconfig/constants.go`, `setting.go` and `setting_gen.go` at `v1.31.3`.
+- `embed`: https://pkg.go.dev/embed ; TRD "Settings catalog".
 
-**Pitfalls.** Workflow ids are URL-encoded and may contain `/`. Visibility lags the execution by a refresh.
+**Build.**
+- `tools/cataloggen/` with its own `go.mod` (D23). `versions.txt`. `make generate` clones the tag into
+  `.cache/temporal/v<version>` (add `.cache/` to `.gitignore`) and runs the generator per minor.
+- The generator: load the checkout with `go/packages`; for each `New…Setting(…)` call in `constants.go`
+  record key, type and precedence (constructor name), default (`go/constant` value via `types.Info.Types`,
+  else source text), description; roles from `types.Info.Uses` of each variable across `service/<role>/…`
+  (else `shared`); the `candidate` hint. Sorted, timestamp-free output.
+- `internal/catalog`: embeds `catalog-*.json`; `Lookup(minor, key)` (case-insensitive), `Search(minor,
+  text)`, `Closest(minor, key)` (prefix match, then edit distance; a 15-line function, no dependency).
+- `tops knobs [text] [-v]` (design brief); `--json` `Knobs`.
+- CI `generate` job with the module cache and `.cache/` cached; lint the generator module separately
+  (`cd tools/cataloggen && golangci-lint run`): the root `./...` does not include a nested module.
 
-### T1.12 `ns list`, `targets`, `version`, `completion`
+**Verify.**
+```sh
+make generate                                              # re-run is byte-stable (git diff --exit-code)
+go test -race ./internal/catalog/...                       # fixture: history.cacheTTL -> [history], default 1h, candidate restart
+bin/tops knobs --json | jq -e '.settings | length > 500'
+bin/tops knobs cacheTTL --json | jq -e 'any(.settings[]; .key == "history.cacheTTL" and .roles == ["history"])'
+! grep -q 'go.temporal.io/server' go.mod                   # the server never enters tops' module for the generator
+```
 
-**Goal.** The remaining read-only commands.
+**Pitfalls.**
+- The first `go/packages` load downloads Temporal's whole dependency graph; do it once, then work offline.
+- Defaults like `256000*4*1024` or `time.Minute` need `go/constant`, not string parsing.
+- A setting referenced only from `common/…` may still be read by just one role at run time; `shared` is the
+  honest label. Do not guess.
+- Keys are case-insensitive in Temporal; search and duplicate checks must be too.
+- Absolute paths or map iteration order in the output break byte-stability.
 
-**Learn first.** Prometheus `file_sd_config`:
-https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config ; cobra shell
-completion and `ValidArgsFunction` (cobra docs).
+**Done when.** `make generate` is clean twice in a row; `knobs` works offline; CI `generate` job green.
 
-**Build.** As named; completion reads the spec, never SSH.
+### T1.7 Classify the keys you set
 
-**Verify.** T1 acceptance row "Targets"; `tops completion zsh | head -1 | grep -q compdef`.
+**Goal.** Every key the fleet repo sets has a hot or restart class with evidence; everything else is
+`unknown`.
 
-**Pitfalls.** `targets` output is the file-SD array itself (no envelope): Prometheus reads it as is.
+**Learn first.** TRD "Classification"; read a property function's life in Temporal: where `Get(dc)` is
+stored (`service/history/configs/config.go`) and where it is called (`service/history/workflow/cache/cache.go`).
 
-### T1.13 e2e harness and v0.1.0
+**Build.** `internal/catalog/class-1.31.yaml` and its loader; `unknown` as the default; `knobs` shows
+`apply` and, with `-v`, the evidence. Classify the keys in temporalScale's `base/` and `overrides.yaml` (and
+the fixture's): cite the call site; a `hot` entry also carries `lab: pending` until T4.3.
 
-**Goal.** The lab suite runs from one command; v0.1.0 is released with its report attached.
+**Verify.**
+```sh
+go test -race ./internal/catalog/...          # unknown default; a class for a key not in the catalog fails
+bin/tops knobs history.cacheTTL --json | jq -e '.settings[0].apply == "restart"'
+```
 
-**Learn first.** Go build constraints: https://pkg.go.dev/cmd/go#hdr-Build_constraints ; GoReleaser:
-https://goreleaser.com/customization/ ; GitHub artifact attestations (docs.github.com, "Using artifact
-attestations"); SLSA levels: https://slsa.dev/spec/v1.0/levels
+**Pitfalls.** A property-function field looks hot and is often read once in a constructor. "Requires
+service restart" in a description covers 14 keys; silence proves nothing.
 
-**Build.** `test/e2e` with the `-lab` parameter, a lab-contract check, the bash-built fixture (node-scale
-scripts through `make -C $LAB push/ssh`), an omes load helper; `release.yml`; "Release steps" below.
+**Done when.** Every key set anywhere in the fixture and temporalScale has an entry with a call-site citation.
 
-**Verify.** Every row of the T1 acceptance table.
+### T1.8 Dynamic-config merge
 
-**Pitfalls.** The harness must undo what it breaks (`docker start` after a stop) even when a test fails.
+**Goal.** Per role, the merged settings of `base/` and the environment's overrides, checked against the
+catalog, and `validate` runs them.
+
+**Learn first.** TRD "Dynamic-config merge order"; Temporal's file format (constraints, value lists):
+https://docs.temporal.io/references/dynamic-configuration
+
+**Build.** `internal/settings`: read `base/common.yaml`, `base/<role>.yaml`, `overrides.yaml` as `yaml.Node`
+(lines for errors); merge by the table; type checks; constraint names against precedence; the warnings; the
+`TimeoutStopSec` check against the drain settings; `Layers(key)` for `knobs -e`. `validate` reports these
+problems with `file` and `line`.
+
+**Verify.**
+```sh
+go test -race -cover ./internal/settings/...  # order, whole-key replace, role routing, shared keys, unknown key, wrong type, case folding
+bin/tops knobs frontend.namespaceRPS -e lab --json | jq -e '.settings[0].layers.effective != null'
+```
+
+**Pitfalls.** `History.CacheTTL` and `history.cacheTTL` in two layers are the same key. Merge whole values;
+merging constraint lists produces settings nobody wrote.
+
+**Done when.** `validate` covers settings; `knobs -e` shows layers; coverage of `internal/settings` >= 80%.
+
+### T1.9 `tops diff`
+
+**Goal.** Two environments compared offline; promotable differences decide the exit code.
+
+**Learn first.** GitOps principles: https://opengitops.dev/ ; TRD "Diff and promote".
+
+**Build.** In `internal/fleet`: resolve both environments; compare promotable and by-design groups; human
+output and `EnvDiff`. `term`: the `+ - ~` marks and the `pending.`/`unhealthy.` exit-code prefixes (TRD
+"Exit codes"), with rows in `ExitCode`'s table test.
+
+**Verify.**
+```sh
+go test -race ./internal/fleet/... ./internal/term/...
+bin/tops diff lab staging; test $? -eq 2
+bin/tops diff lab lab; test $? -eq 0
+bin/tops -e lab diff lab staging; test $? -eq 4                  # -e refused here
+```
+
+**Pitfalls.** Compare resolved values (defaults applied, merged settings), not raw files: a key set to its
+default in one environment and absent in the other is still a difference worth showing, marked as such.
+
+**Done when.** Exit codes 0/2/4 tested; `EnvDiff` golden.
+
+### T1.10 `tops init`, coverage gate, release pipeline, v0.1.0
+
+**Goal.** A new environment in one command; v0.1.0 released with checksums, SBOM and provenance.
+
+**Learn first.** GoReleaser: https://goreleaser.com/customization/ ; GitHub artifact attestations:
+https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations ; SLSA levels:
+https://slsa.dev/spec/v1.0/levels ; `go tool cover`: https://go.dev/blog/cover
+
+**Build.** `tops init <env>` (embedded commented template; never overwrites; `spec.env_exists`); `make cover`
+(per-package thresholds from `go tool cover -func`); `.goreleaser.yaml` with the same `CGO_ENABLED=0`
+and `-X` flags as the Makefile; `release.yml` on tags; README quickstart.
+
+**Verify.** T1 acceptance.
+
+**Pitfalls.** `init` must refuse an existing environment. GoReleaser's default `ldflags` set `main.version`;
+point them at `internal/cli.Version`.
+
+**Done when.** T1 acceptance green; v0.1.0 tagged and published.
 
 ### T1 acceptance
 
-| Check                                                               | Command                                                                                                    |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Installs with `go install`                                          | `go install github.com/2SSK/tops/cmd/tops@v0.1.0 && tops version`                                          |
-| Binary size                                                         | `test $(stat -c %s "$(go env GOPATH)/bin/tops") -lt 41943040`                                              |
-| Spec validates offline                                              | `tops validate; test $? -eq 0`                                                                             |
-| Bad spec rejected with a path                                       | `sed 's/shards: 512/shards: 0/' cluster.yaml > cluster.bad.yaml && tops validate -f cluster.bad.yaml --json \| jq -e '.errors[0].path == "shards"'` |
-| Status on the bash-built lab: 512 shards, ring 2 of 2              | `tops status --json \| jq -e '.temporal.shards.owned == 512 and (.temporal.rings.history.members \| length) == 2'` |
-| Status exits 5 with a node down                                     | `docker stop tscale-02; tops status; test $? -eq 5; docker start tscale-02`                               |
-| Audit names the busiest layer under load                            | omes started by hand, then `tops audit --json \| jq -e '.closest != null and ([.layers[] \| select(.level != "idle")] \| length) > 0'` |
-| Logs merged from both nodes                                         | `test $(tops logs --all -n 50 \| grep -o 'tscale-0[12]' \| sort -u \| wc -l) -eq 2`                     |
-| Investigate from a UI URL                                           | `tops investigate "http://10.78.0.11/namespaces/default/workflows/<id>/<run>/history"; ls investigate-*.md` |
-| Targets                                                             | `tops targets --job temporal \| jq -e 'length == 2 and .[0].labels.job == "temporal"'`                     |
-| Helper uploaded once                                                | Second `tops status --debug 2>&1 \| grep -c 'helper upload'` = 0                                           |
-| Release artefacts                                                   | `gh release view v0.1.0 --json assets -q '.assets[].name'` lists checksums, SBOM, 3 archives, `e2e-report.txt` |
+| Check                                   | Command                                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Installs, reports its version           | `go install github.com/2SSK/tops/cmd/tops@v0.1.0 && tops version \| grep -q 0.1.0`            |
+| Lab spec valid                          | `tops -e lab validate; test $? -eq 0` (temporalScale)                                         |
+| Errors point at the field               | `tops -e bad validate --json \| jq -e 'all(.errors[]; .path != "" and .line > 0)'` (fixture)   |
+| Catalog complete and stable             | `make generate`; `tops knobs --json \| jq -e '.settings \| length > 500'`                      |
+| Environments compared                   | `tops diff lab staging -v` (temporalScale): only intended differences                          |
+| Init                                    | `tops init qa && test "$(stat -c %a environments/qa/secrets.env)" = 600 && ! tops init qa`    |
+| Release artefacts                       | `gh release view v0.1.0 --json assets -q '.assets[].name'` lists checksums, SBOM, archives   |
 
-T1 lets temporal-node-scale delete `scripts/status.sh`.
+# T2: measure, reach, size, plan (v0.2.0)
 
-## T2: plan, apply, snapshots, rollback, restart, lock (v0.2.0)
+Demo: on a bare VPSLAB, `tops -e lab capacity` shows each node's detected size and per-role limits;
+`tops -e lab plan` lists every file each role would get, exit 2.
 
-Managed at T2: `temporal.yaml`, `temporal.env`, `dynamicconfig.yaml`, `temporal.service`, `profile.conf`.
-`ui:` is validated and ignored until T3.
+### T2.1a Lab budget, caps, and a per-role cluster by hand
 
-### T2.1 Rendering
-
-**Goal.** Every node's five files rendered in memory from the spec, byte-stable.
+**Goal.** VPSLAB runs with caps that fit the workstation, and you have run a per-role Temporal cluster on it
+by hand once.
 
 **Learn first.**
-- `text/template` (custom delimiters), `embed`: https://pkg.go.dev/text/template, https://pkg.go.dev/embed
-- Temporal server configuration reference: https://docs.temporal.io/references/configuration
-- Dynamic config: https://docs.temporal.io/references/dynamic-configuration
-- TRD "Templates"; backend-schema "Generated files".
+- Compose override merging and profiles: https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/ ,
+  https://docs.docker.com/compose/how-tos/profiles/
+- systemd resource control and `systemd-run`:
+  https://www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html ,
+  https://www.freedesktop.org/software/systemd/man/latest/systemd-run.html
+- cgroup v2 files: https://docs.kernel.org/admin-guide/cgroup-v2.html
+- Temporal server configuration: https://docs.temporal.io/references/configuration ; the SQL tool:
+  https://docs.temporal.io/self-hosted-guide/visibility (schema setup sections)
+- Go 1.25 container-aware GOMAXPROCS: https://go.dev/doc/go1.25
 
-**Build.** `internal/render`: `[[ ]]` templates, `NodeInput`, `FileSet` with effect classes, dynamic-config
-merge with the duplicate-key error. Golden files: every profile × 2 nodes, plus a 3-node spec.
+**Build.** No tops code.
+1. In VPSLAB (your other repo): commit the `vps-pg` service (Q19); add `compose.override.yaml` to its
+   `.gitignore`.
+2. Workstation budget: `free -m` with your normal desktop, three times over a working day; the lowest
+   `available` is the budget. Write `test/e2e/vpslab.override.yaml` from the lab contract's table so the sum
+   of every cap fits it, and the make targets `lab-up`, `lab-renew`, `lab-reset`, `lab-down`.
+3. On VPSLAB by hand: download the 1.31.3 release on each node; write one config per role and one
+   dynamic-config file; create the databases with `temporal-sql-tool`; start each role with
+   `systemd-run --unit=m-<role> -p MemoryAccounting=yes … start --service <role>`; register a namespace.
 
-**Verify.** `go test -race ./internal/render/...`; review every `-update` diff by eye.
+**Verify.**
+```sh
+make lab-up && docker inspect -f '{{.Name}} {{.HostConfig.NanoCpus}} {{.HostConfig.Memory}}' vps-01 vps-02 vps-03 vps-pg
+for n in 11 12 13; do ssh-keygen -F 10.80.0.$n -f lab/keys/known_hosts >/dev/null || echo "missing 10.80.0.$n"; done
+ssh -F lab/keys/ssh_config vps-01 cat /sys/fs/cgroup/memory.max                      # the container limit
+ssh -F lab/keys/ssh_config vps-01 systemctl show m-history -p MemoryCurrent           # accounting works
+curl -s 10.80.0.11:9234/metrics | grep -E '^gomaxprocs '                              # equals the node's cpus (open point 4)
+```
 
 **Pitfalls.**
-- Temporal's own `{{ env "…" }}` must pass through untouched; `# enable-template` must stay in the first 1 KB.
-- Secrets live only in `temporal.env`; `temporal.yaml` must be safe to print whole.
-- Template constants fixed at cluster creation (`failoverVersionIncrement`, …) are pinned by a golden test.
+- `free` and `nproc` inside a VPSLAB node report the workstation; read the cgroup files.
+- `docker compose down` without `--profile pg` leaves `vps-pg` attached, and the `vpslab` network cannot be
+  removed while it has endpoints: `lab-down` and `lab-reset` stop `vps-pg` first.
+- `ssh-keygen -R` on `known_hosts` removes the address lines tops needs; `make -C lab up` writes them back.
+- An uncapped `vps-pg` can take memory the nodes were promised; always cap it, and record the cap with every run.
 
-### T2.2 Validation with the target binary
+**Done when.** `make lab-up` gives capped nodes and `vps-pg`; you have queried a namespace through the
+hand-run frontend; you can explain every line of the configs you wrote (they become T2.5's templates).
 
-**Goal.** Nothing is switched unless the target `temporal-server` accepts it.
+### T2.1b Measure the sizing constants
 
-**Learn first.** `temporal-server render-config` and `validate-dynamic-config` (`--help` of the 1.31.3
-binary); `iptables-restore --test`: https://man7.org/linux/man-pages/man8/iptables-restore.8.html ;
-`systemd-analyze verify`: https://www.freedesktop.org/software/systemd/man/latest/systemd-analyze.html
-
-**Build.** Helper op `validate` in `/run/tops/<run-id>/` (TRD "Validation with the target binary").
-
-**Verify.** `make helper-test` with the real 1.31.3 binary: one accepted and one rejected render.
-
-**Pitfalls.** `render-config` prints the rendered config, password included: discard stdout. Give it
-exactly the rendered environment, nothing inherited.
-
-### T2.3 Plan
-
-**Goal.** Per node: what changes, what drifted, what it costs (restart, hot reload, nothing).
-
-**Learn first.** Terraform's plan as a mental model: https://developer.hashicorp.com/terraform/cli/commands/plan ;
-go-udiff: https://pkg.go.dev/github.com/aymanbagabas/go-udiff ; TRD "Plan and apply".
-
-**Build.** `internal/plan`: desired vs live, unified diffs, secret masking, drift via `applied.json`, `adopt`
-marking, ordering; `tops plan` (exit 0/2/3).
-
-**Verify.**
-```sh
-go test -race -cover ./internal/plan/...      # incl. a property test: no secret in any diff, random passwords
-cd $LAB && tops plan; test $? -eq 2           # the bash-built lab: adopt on both nodes
-```
-
-**Pitfalls.** Drift (someone edited the node) and change (you edited the spec) are different lines in the
-plan. `facts` sends content only for files whose hash differs: keep `plan` under 10 s.
-
-### T2.4 Safety rules and persistence identity
-
-**Goal.** Every refusal of the PRD Safety table is a pure function with pass and refuse rows.
-
-**Learn first.** PRD "Safety"; app-flow "What tops refuses"; TRD "Persistence identity" (why a new store
-address can create a second cluster); concepts "Cluster immutables".
-
-**Build.** `internal/safety`: immutables, store identity (v1: `postgres.host/port`), version via apply,
-unknown member, profile vs effective host limits, headroom, stopped node (assumes Q10), no TTY, `--force`
-with `-y`, the `max_connections` warning.
-
-**Verify.**
-```sh
-go test -race -cover ./internal/safety/...    # >= 90%
-cd $LAB && sed 's/cluster: active/cluster: tscale-lab/' cluster.yaml > cluster.bad.yaml
-tops plan -f cluster.bad.yaml --json | jq -e '.refusals[0].code == "refused.immutable"'; rm cluster.bad.yaml
-```
-
-**Pitfalls.** Rules take values and return values; no I/O, or 90% coverage is out of reach. Test the
-boundary rows (exactly at the headroom limit).
-
-### T2.5 Cluster lock with leases and fencing
-
-**Goal.** Two runs never change the cluster at once, and a run that lost its lease cannot write.
+**Goal.** Every constant of the TRD formula exists, with its raw samples.
 
 **Learn first.**
-- `open(2)` with `O_CREAT|O_EXCL`: https://man7.org/linux/man-pages/man2/open.2.html
-- Leases and fencing tokens: https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html
-- TRD "Cluster lock".
+- omes (Temporal's load generator): https://github.com/temporalio/omes
+- Go GC guide: https://go.dev/doc/gc-guide
+- TRD "Constants and how they are measured"; concepts "Measurement discipline".
 
-**Build.** Helper `lock` (acquire, renew, release by run id, stale takeover); the workstation renewal
-loop; every mutating op checks the lock's run id (`lock.lost`).
+**Build.** No tops code.
+1. Write the reference load down before the first run: omes scenario `workflow_with_single_noop_activity`, one
+   fixed rate, 15 minutes, omes commit pinned.
+2. A sampler (shell over SSH is enough): unit cgroups every second, every role's metrics port every 10 s.
+3. Runs on the two node sizes (vps-01's and vps-03's caps), three each: idle (each role alone, then all
+   together), reference load, double load. `perShard`: three short-lived clusters at 128, 256 and 512 shards
+   (each needs a fresh database: the count is fixed at creation).
+4. Derive every constant; write `internal/sizing/testdata/measure-<date>.json` (backend schema) and a
+   README there stating scenario, rate, sizes, dates.
+5. Fit check for temporalScale's shape S3 (all four roles on vps-03): compute `free` for four roles at
+   vps-03's proposed cap from the measured floors. If it is negative, record it and decide with PRD Q20
+   before choosing caps.
+6. Decide the final caps (PRD Q14): each node holds its roles' floors plus headroom under the reference load;
+   `vps-pg` sized from its measured use at the reference rate with the same headroom rule as the nodes (no
+   bottleneck is designed in); the total fits the budget. Update the lab contract table.
 
-**Verify.** `make helper-test` (two helpers race for the lock; a write with a stale run id is refused);
-T2 acceptance rows "Lock refuses a second run", "A fenced run cannot write".
+**Verify.**
+```sh
+jq -e '.runs | length >= 6' internal/sizing/testdata/measure-*.json
+jq -e '.perShard | length == 3' internal/sizing/testdata/measure-*.json
+jq -e '.workstation.memAvailableMinBytes > 0' internal/sizing/testdata/measure-*.json
+jq -e '.s3FitVps03 != null' internal/sizing/testdata/measure-*.json      # the four-roles-on-vps-03 result, fit or not
+```
 
-**Pitfalls.** Lease times are each node's clock. Without fencing, a laptop that slept through its lease
-wakes up and keeps writing after another run took over.
+**Pitfalls.**
+- Caps above the workstation's free memory are not an error anywhere: the kernel swaps or OOM-kills and the
+  measurements are silently wrong. Check `free -m` on the workstation during every run.
+- Measure each role alone for its floor, and together for its share; the two answer different questions.
+- Write down the load before you look at the numbers, or you will tune the load to the answer.
+- These constants are re-validated in T8 under 30 minutes of load; a first set does not need to be perfect,
+  it needs to be recorded.
 
-### T2.6 Write, snapshot, restore, history
+**Done when.** The measure file and its README are committed; the lab contract caps are final.
 
-**Goal.** Every change is atomic per file, preceded by a snapshot, and recorded.
+### T2.2 Node helper and wire: `hello`, `facts`
 
-**Learn first.** `rename(2)` atomicity and `fsync` of the directory: https://man7.org/linux/man-pages/man2/rename.2.html ;
-content-addressed storage (snapshot `files/<sha256>`); backend-schema "Node state".
+**Goal.** `tops node hello|facts` runs as root, reads one JSON request, writes one typed response.
 
-**Build.** Helper `write`, `restore`, `history`; `applied.json`; newest 10 snapshots, 100 history records.
+**Learn first.** `proc(5)` (`/proc/<pid>/cgroup`, `/proc/<pid>/exe`): https://man7.org/linux/man-pages/man5/proc.5.html ;
+`sched_getaffinity(2)`: https://man7.org/linux/man-pages/man2/sched_getaffinity.2.html ; go-systemd D-Bus:
+https://pkg.go.dev/github.com/coreos/go-systemd/v22/dbus ; `encoding/json` `Decoder.DisallowUnknownFields`;
+backend schema "Node helper protocol".
 
-**Verify.** `make helper-test`: kill the helper mid-write (old or new content, never partial); restore is
-byte-equal including mode and owner; restore makes its own snapshot.
+**Build.** `internal/wire` (envelope, op names, every type); `internal/helper`: root check, stdin decode,
+exit 0/1/2, slog JSON on stderr; `hello` with cgroup-aware memory and cores and their sources (the cgroup
+root is a parameter, so tests point it at testdata); `facts` (hashes, content only when different, every
+`temporal@*` instance, `current`, `applied.json`). The hidden `node` command in `internal/cli`.
 
-**Pitfalls.** Snapshot before the first byte changes. Copies of `temporal.env` stay 0600 inside 0700 dirs.
+**Verify.** `go test -race ./internal/wire/... ./internal/helper/...` with cgroup trees as testdata (root
+cgroup; container with `memory.max`; `cpu.max` `150000 100000` -> 1.5 cores; `max`).
 
-### T2.7 Ring gate
+**Pitfalls.** `max` means unlimited. Walk PID 1's cgroup and its visible ancestors; take the minimum.
+Nothing in the helper may read the spec: it only executes what the request says.
 
-**Goal.** A node is touched only when the rest of the ring is whole, and the rollout moves on only when
-it is back.
+**Done when.** Both ops tested on fixtures; `sudo bin/tops node hello < req.json` works on your workstation.
 
-**Learn first.** Concepts "Membership", "History shards"; TRD "Ring gate"; why "stable twice": a ring that
-flaps passes a single sample.
+### T2.3 SSH, host keys, helper upload, helper test image
 
-**Build.** `internal/gate`: before and after conditions, 2 s polling, stability, timeout report with the
-journal tail.
+**Goal.** tops connects to every node with strict host keys, checks sudo and forwarding, uploads the helper
+once per build.
 
-**Verify.** `go test -race ./internal/gate/...` with a fake `Cluster`: flapping ring, shard sum dip,
-unknown member, timeout.
+**Learn first.** `x/crypto/ssh`, `knownhosts`, `agent`: https://pkg.go.dev/golang.org/x/crypto/ssh ;
+RFC 4254 `direct-tcpip`: https://www.rfc-editor.org/rfc/rfc4254#section-7.2 ; `known_hosts` format:
+https://man.openbsd.org/sshd#SSH_KNOWN_HOSTS_FILE_FORMAT ; errgroup: https://pkg.go.dev/golang.org/x/sync/errgroup
 
-**Pitfalls.** Check every node's view, not one. "X owns > 0 shards" catches a node that is in the ring but
-has not acquired anything.
+**Build.** `internal/remote` per TRD (dial, auth, host keys with `HostKeyAlgorithms` from the stored
+entries, keepalive, preflight, `Call` for helper ops, `Dial` for tunnels); the upload command as one constant;
+`make build-linux`; `test/helper` image and `make helper-test`; `tops version -e`; `--debug`. A test that the
+set of shell strings tops sends is exactly `uname -m` and the upload command (H2); a test that fails on
+`InsecureIgnoreHostKey` anywhere in the tree (H3).
 
-### T2.8 `apply` and `restart`
+**Verify.**
+```sh
+make helper-test                                   # hello over SSH; upload once; changed key refused; unknown key refused
+bin/tops -e lab version --json | jq -e 'all(.nodes[]; .helperSha256 | length == 16)'
+```
 
-**Goal.** The whole cluster converges one node at a time and stops at the first failure.
+**Pitfalls.** `make -C lab reset` changes host keys; the fix is `make -C lab up` rewriting `known_hosts`,
+never `accept-new`. Upload over stdin, never as an argument. Close every session; a leaked session holds
+the connection open after Ctrl-C.
 
-**Learn first.** App-flow journeys 3 and 4; SRE book, release engineering:
-https://sre.google/sre-book/release-engineering/
+**Done when.** `make helper-test` green in CI; a second `version -e` uploads nothing.
 
-**Build.** `internal/rollout` (stage in parallel, non-restart classes in parallel, restart class serially
-with the gate); `tops apply`, `tops restart [--all] [--force]`; confirmation and progress.
+### T2.4 Sizing, pins and `tops capacity`
 
-**Verify.** T2 acceptance rows "First apply adopts", "Dynamic-config change", "Static change", "Killing 02".
+**Goal.** Per node and role: limits, weights and pools from detected size, roles and pins; headroom; DB
+budget.
 
-**Pitfalls.** Re-plan inside `apply`, never apply a plan computed earlier. `--force` skips the before-gate
-only, and never with `-y`.
+**Learn first.** TRD "Sizing"; PostgreSQL connection settings:
+https://www.postgresql.org/docs/17/runtime-config-connection.html ; `pg_stat_activity`:
+https://www.postgresql.org/docs/17/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW ; pgx `DialFunc`:
+https://pkg.go.dev/github.com/jackc/pgx/v5/pgconn#Config
 
-### T2.9 `rollback`
+**Build.** `nodes[].pin` in the spec (validation rows from the backend schema); `internal/sizing` (pure:
+inputs -> `RoleSize` per role with the formula string; the three refusals; constants per minor plus the test
+that recomputes them from T2.1b's samples); `internal/datastore/postgres` read of the connection limits
+through a tunnel; `tops capacity`.
 
-**Goal.** Any apply can be undone, and the undo can be undone.
+**Verify.**
+```sh
+go test -race -cover ./internal/sizing/...     # golden per node shape: all roles, frontend+matching, pinned, too small, one history node
+bin/tops -e lab capacity --json | jq -e 'all(.nodes[]; (.roles | length) > 0) and .db.ok and .headroom.ok'
+```
 
-**Learn first.** App-flow journey 7; TRD "Snapshots, history and rollback" (why the schema never goes back).
+**Pitfalls.** Round once, at the end, in one direction (down for limits, up for pools), or the sum of roles
+exceeds the node. A pin changes what is left for the others; test it. With one history node, headroom is
+skipped with a warning, not divided by zero.
 
-**Build.** `tops rollback list` and `tops rollback <id>` (merge history from all nodes, prefix ids). No
-argument prints the list (assumes PRD Q7).
+**Done when.** `internal/sizing` coverage >= 90%; `capacity` on the lab matches a hand calculation for one
+node.
 
-**Verify.** T2 acceptance row "Rollback and its undo".
+### T2.5 Rendering per role
 
-**Pitfalls.** After a rollback the spec still says the new thing; say so, and `plan` shows it as pending.
+**Goal.** Every node's file set, per role, byte-stable.
 
-### T2.10 `ns ensure`
+**Learn first.** `text/template`, `embed`: https://pkg.go.dev/text/template , https://pkg.go.dev/embed ;
+Temporal server configuration: https://docs.temporal.io/references/configuration ; backend schema
+"Generated files".
 
-**Goal.** Namespaces match the spec; unmanaged ones are never touched.
+**Build.** `internal/render`: `[[ ]]` templates from the configs you wrote by hand in T2.1a; `NodeInput`; per
+role `<role>.yaml`, `<role>.env`, `dynamicconfig-<role>.yaml`, `limits.conf`; the shared `temporal.env` and
+`temporal@.service`; `FileSet` with role and effect; the port table once. Check in the 1.31.3 source whether
+the worker role needs `publicClient.hostPort` (TRD open point 6) and render it if so. Golden files per node of
+the fixture.
 
-**Learn first.** Namespaces and retention: https://docs.temporal.io/namespaces ; app-flow journey 9.
+**Verify.** `go test -race ./internal/render/...`; read every `-update` diff.
 
-**Build.** `tops ns ensure` (under the lock, assumes Q8) and the namespace step at the end of `apply`.
+**Pitfalls.** Temporal's `{{ env "…" }}` must pass through; `# enable-template` must stay in the first
+1 KB. Secrets only in `temporal.env`. Ports come from one table, never typed into a template twice.
 
-**Verify.** T2 acceptance row "`ns ensure` creates and is idempotent".
+**Done when.** Golden files for every node of the fixture; a property test proves no secret value appears
+outside `temporal.env`.
 
-**Pitfalls.** A new namespace appears on other frontends only after their cache refresh (~10 s): wait for
-`DescribeNamespace` on every frontend.
+### T2.6 `plan` on bare nodes, e2e harness, v0.2.0
 
-### T2.11 e2e and v0.2.0
+**Goal.** `plan` shows everything a bootstrap would create, before anything is copied.
 
-**Verify.** Every row below; "Release steps".
+**Learn first.** Terraform plan as the model: https://developer.hashicorp.com/terraform/cli/commands/plan ;
+go-udiff: https://pkg.go.dev/github.com/aymanbagabas/go-udiff
+
+**Build.** `internal/plan` (desired vs `facts`; on a node with no tops state everything is `create`;
+`not validated: 1.31.3 not staged`); `tops plan` exit 0/2/3; `test/e2e` harness (temporary fleet root from
+`test/e2e/fleet/` with absolute lab key paths, `TOPS_ROOT`, the contract check, `make lab-reset`, the
+workstation memory check, the report files).
+
+**Verify.** T2 acceptance.
+
+**Pitfalls.** `plan` must leave nodes untouched: assert it (H1). The e2e fixture is not temporalScale's lab;
+never point the harness at temporalScale.
+
+**Done when.** T2 acceptance green on the release binary; v0.2.0 published with the e2e report.
 
 ### T2 acceptance
 
-| Check                                                                                 | Command                                                                                     |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| First apply adopts the bash-built cluster (spec `cluster: active`)                    | `tops plan; test $? -eq 2 && tops apply -y`                                                 |
-| A workflow started before the takeover completes                                      | `temporal workflow start …` before; after apply `temporal workflow show -w <id> --address 10.78.0.11:7233 \| grep -q Completed` |
-| Second plan is clean                                                                  | `tops plan; test $? -eq 0`                                                                  |
-| Dynamic-config change, no restart                                                     | edit `config/dynamicconfig.yaml`; `tops apply -y --json \| jq -e '[.steps[] \| select(.action=="restart")] \| length == 0'` |
-| Static change restarts one node at a time, shards owned throughout                   | change `temporal.logLevel`; `tops apply -y --json \| jq -e '[.steps[] \| select(.action=="restart")] \| length == 2 and all(.gate.shardsTotal == 512)'` |
-| Killing 02 mid-apply stops the rollout                                               | e2e `TestApplyStopsWhenNodeDies`: `docker kill tscale-02` while 01 restarts; exit 1; 02 untouched |
-| Rollback and its undo both pass status                                               | `id=$(tops rollback list --json \| jq -r '.applies[0].applyId'); tops rollback $id -y && tops status && tops rollback "$(tops rollback list --json \| jq -r '.applies[0].applyId')" -y && tops status` |
-| Lock refuses a second run                                                             | e2e: two concurrent `tops apply -y`; one exits 3 with `lock.held`                          |
-| A fenced run cannot write                                                             | e2e: stop run A's renewals past the TTL, run B takes over; A's next op fails with `lock.lost` |
-| `ns ensure` creates and is idempotent                                                 | `tops ns ensure -y && tops ns ensure -y --json \| jq -e 'all(.namespaces[]; .changed == false)'` |
+| Check                                | Command                                                                                            |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Detected sizes are the containers'   | `tops -e lab capacity --json \| jq -e '.nodes[] \| select(.name=="vps-03") \| .memory.source \| startswith("cgroup")'` |
+| Per-role limits for every listed role | `tops -e lab capacity --json \| jq -e '[.nodes[].roles[]] \| length == 10'` (4 + 4 + 2)          |
+| Plan lists every file, exit 2        | `tops -e lab plan; test $? -eq 2`                                                                  |
+| Plan changes nothing (H1)            | e2e `TestPlanTouchesNothing`: sha256 of `/etc/temporal`, `/opt/temporal`, `/var/lib/tops` before = after; `/run/tops` empty |
+| Helper uploaded once                 | second `tops -e lab plan --debug 2>&1 \| grep -c 'helper upload'` = 0                              |
+| Too-small node refused               | e2e: a temp env whose vps-03 pins `history.memoryMax` above what the cap leaves: `tops -e small plan --json \| jq -e '.refusals[0].code == "refused.node_too_small"'`; exit 3 (independent of the final caps) |
+| Unknown host key refused             | e2e: a node's line removed from a copy of `known_hosts`: exit 1 `ssh.host_key_unknown`            |
 
-T2 lets temporal-node-scale delete nothing: `deploy.sh` still calls `reload-temporal.sh` and
-`ensure-namespaces.sh`, and tops cannot build a node until T3. Window rule until T3: rebuild with
-`deploy.sh`, then `tops apply` takes the node over again; never run `reload-temporal.sh` on a managed node.
+# T3: bootstrap and status (v0.3.0)
 
-## T3: bootstrap, node add/remove, firewall, nginx, node_exporter, UI (v0.3.0)
+Demo: `make lab-reset && tops -e lab bootstrap -y && tops -e lab status`: three nodes, rings per role,
+512 shards owned. temporalScale keeps its bash version until v0.4.0: v0.3.0 builds and reads a cluster but
+cannot change it or roll it back.
 
-### T3.1 Releases and checksums
+### T3.1 Releases, checksums, `stage`
 
-**Goal.** tops knows where every release lives and verifies it before a node extracts it.
+**Goal.** A fresh node gets the `temporal` user and verified releases.
 
-**Learn first.** GitHub release assets: https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases ;
-the Temporal, CLI and `temporalio/ui-server` release pages and their `checksums.txt`.
+**Learn first.** The Temporal server and CLI release pages and their `checksums.txt`; `useradd --system`:
+https://man7.org/linux/man-pages/man8/useradd.8.html ; `archive/tar`, `compress/gzip`:
+https://pkg.go.dev/archive/tar ; `net/http` with context: https://pkg.go.dev/net/http#NewRequestWithContext
 
-**Build.** `internal/release`: URLs per arch, `checksums.txt` fetch and parse on the workstation, the
-supported-versions table (1.31 only until T4).
+**Build.** `internal/release` (URL patterns per kind and arch, checksum parsing, supported minors table);
+helper `stage` (user, directories, download, verify, extract, `current` only on first install, release
+retention).
 
-**Verify.** `go test -race ./internal/release/...` (URL per arch, checksum parsing, unknown version).
+**Verify.** `go test -race ./internal/release/...`; `make helper-test` against a local HTTP server (pass,
+checksum fail, re-run skips).
 
-**Pitfalls.** The workstation fetches the checksum over TLS; the node only compares. Never trust a
-checksum the node downloaded next to the tarball.
+**Pitfalls.** The workstation fetches checksums over TLS; the node only compares. Extract into a temp dir and
+rename; a half-extracted release must never look installed. Reject archive paths with `..`.
 
-### T3.2 Stage on the node
+**Done when.** A fresh helper container ends with the release staged and the user created; a second run
+changes nothing.
 
-**Goal.** A fresh Ubuntu host gets the `temporal` user, packages and verified releases.
+### T3.2 Validation with the target binary
 
-**Learn first.** `apt-get` non-interactive use: https://manpages.ubuntu.com/manpages/noble/man8/apt-get.8.html ;
-`useradd --system`: https://man7.org/linux/man-pages/man8/useradd.8.html
+**Goal.** Nothing switches unless the target `temporal-server` accepts every role's files.
 
-**Build.** Helper `stage` per backend-schema "Stage"; `.tops.json` per release; symlinks.
+**Learn first.** `temporal-server render-config` and `validate-dynamic-config` (`--help` of 1.31.3;
+`render-config` takes `--config/--env` only); `systemd-analyze verify`:
+https://www.freedesktop.org/software/systemd/man/latest/systemd-analyze.html
 
-**Verify.** `make helper-test`: stage against a local HTTP server with a fake release (pass, checksum
-fail, re-run skips).
+**Build.** Helper `validate` per role in `/run/tops/<run-id>/<role>/`, removed on exit; `plan` uses it when the
+release is staged; `refused.render_rejected`.
 
-**Pitfalls.** `DEBIAN_FRONTEND=noninteractive`, or apt waits for a prompt forever. A release dir staged by
-the bash scripts is verified by content, not trusted.
+**Verify.** `make helper-test` with the real binary: one accepted and one rejected render per role.
 
-### T3.3 Host files: firewall, nginx, journald, UI
+**Pitfalls.** `render-config` prints the password: discard stdout. Give it exactly the rendered environment.
 
-**Goal.** tops renders and applies every host file it owns, each with its own validation.
+**Done when.** Every role's golden render validates with 1.31.3; `/run/tops` is empty after every run.
 
-**Learn first.**
-- iptables, `iptables-restore`, conntrack: https://man7.org/linux/man-pages/man8/iptables.8.html,
-  https://man7.org/linux/man-pages/man8/iptables-extensions.8.html
-- nginx access module and `nginx -t`: https://nginx.org/en/docs/http/ngx_http_access_module.html
-- `journald.conf`: https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html
-- ui-server configuration: https://github.com/temporalio/ui-server
+### T3.3 Schema on PostgreSQL
 
-**Build.** Render firewall rules and unit, nginx site and allow lists, journald and rsyslog drop-ins,
-ui-server config and unit; helper effects (`iptables-restore`, restart `temporal-firewall`, `nginx -t` with
-restore on failure, reload).
+**Goal.** Both databases created and versioned by the target release's tool.
 
-**Verify.** `make helper-test`: chain present after `systemctl restart temporal-firewall`; a bad nginx file
-is rejected and the previous one restored.
+**Learn first.** Temporal SQL tool: https://github.com/temporalio/temporal/tree/main/tools/sql ; concepts
+"Schema versions".
 
-**Pitfalls.** Accept `ESTABLISHED,RELATED` before the `DROP`, or the node cuts the replies to its own
-outbound connections. Never touch Docker's chains or `INPUT` rules other than the jump.
+**Build.** Helper `schema` (create-database, `setup-schema -v 0.0`, `update-schema --schema-name`), password
+through `SQL_PASSWORD` only; progress events.
 
-### T3.4 Plan for host files
+**Verify.** `make helper-test` against a PostgreSQL container: create, setup, update, re-run no-op.
 
-**Goal.** `plan` shows firewall changes per port group and files tops does not own.
+**Pitfalls.** An existing database owned by another role makes the migration fail later; preflight reports
+it. Never put the password in argv: `ps` shows argv to every user.
 
-**Build.** Firewall delta (`+`/`-` per group), unknown files in owned dirs as removals (assumes Q9), bash
-leftovers listed as "not managed".
+**Done when.** Re-running `schema` is a no-op; the tool's stderr reaches the operator without secrets.
 
-**Verify.** T3 acceptance row "Firewall from the spec".
+### T3.4 Cluster lock with leases and fencing
 
-**Pitfalls.** A firewall change that removes a peer applies after the node is gone; one that adds a peer,
-before it starts (app-flow journey 5).
+**Goal.** Two runs never change an environment at once; a run that lost its lease cannot write.
 
-### T3.5 Schema on PostgreSQL
+**Learn first.** `open(2)` `O_CREAT|O_EXCL`: https://man7.org/linux/man-pages/man2/open.2.html ; `flock(2)`:
+https://man7.org/linux/man-pages/man2/flock.2.html and `unix.Flock`: https://pkg.go.dev/golang.org/x/sys/unix#Flock ;
+leases and fencing: https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html ; TRD
+"Cluster lock".
 
-**Goal.** tops creates and versions both databases with the target release's tool.
+**Build.** Helper `lock` (acquire, renew, release, stale takeover under the flock); the fencing check inside
+every fenced op (under the flock); workstation side: acquire in spec order, release on every exit path, a
+renewal goroutine with its own session, cancelled with the run's context.
 
-**Learn first.** Temporal SQL schema tool: https://github.com/temporalio/temporal/tree/main/tools/sql ;
-PostgreSQL connection limits: https://www.postgresql.org/docs/17/runtime-config-connection.html ;
-concepts "Schema versions".
+**Verify.** `make helper-test`: two helpers race (one wins); a stale run id is refused; takeover waits for an
+in-progress write.
 
-**Build.** Helper `schema` (create-database, `setup-schema -v 0.0`, `update-schema --schema-name`),
-password via `SQL_PASSWORD` only; the `max_connections` budget warning.
+**Pitfalls.** Lease times are node clocks. Without fencing, a laptop that slept through its lease keeps
+writing. Release in a `defer` that uses a fresh context: the run's context is already cancelled on Ctrl-C.
 
-**Verify.** `make helper-test` against a PostgreSQL container with the real 1.31.3 tool: create, setup,
-update, re-run no-op.
+**Done when.** All race rows pass under `-race`; `lock.held` names holder, command and age.
 
-**Pitfalls.** Each of the four roles in a process opens its own pools: budget 4 × (20 + 5) per 2c4g node.
+### T3.5 Write, snapshots, template units, `service`, `history`
 
-### T3.6 `tops bootstrap`
+**Goal.** Atomic writes preceded by snapshots; role units enabled and started by name; an audit record per
+node.
 
-**Goal.** One command from fresh hosts to a healthy cluster, resumable after a failure.
+**Learn first.** `rename(2)` and directory `fsync`: https://man7.org/linux/man-pages/man2/rename.2.html ;
+systemd template instances and instance drop-ins:
+https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html
 
-**Learn first.** App-flow journey 1 (incl. the resume rule); concepts "Cluster immutables".
+**Build.** Helper `write`, `restore`, `history`, `applied.json` (with enabled roles), `service` on
+`temporal@<role>.service` through D-Bus (job result checked); snapshot retention (10) and history retention
+(100).
 
-**Build.** Preflight, plan, stage, schema, validate, firewall-first writes, serial first start with the
-gate, UI, namespaces, the printed manual steps; resume.
+**Verify.** `make helper-test`: kill mid-write (old or new, never partial); restore byte-equal; an instance
+drop-in changes only that instance (`systemctl show temporal@history -p MemoryMax`).
 
-**Verify.** T3 acceptance rows "Fresh lab", "Bootstrap refuses a used datastore", "Bootstrap resumes".
+**Pitfalls.** `daemon-reload` after any unit or drop-in change, before the restart. Snapshot before the first
+byte. A D-Bus job that ends `failed` is an error even though the call returned.
 
-**Pitfalls.** Resume is decided by the datastore (this cluster's name in `cluster_metadata_info`), not by
+**Done when.** Every fenced op checks the lease; history records never contain contents or secrets.
+
+### T3.6 Temporal reads over tunnels
+
+**Goal.** Health, rings per role, shard ownership and identity read through frontends.
+
+**Learn first.** gRPC health checking: https://github.com/grpc/grpc/blob/master/doc/health-checking.md ;
+`grpc.WithContextDialer`: https://pkg.go.dev/google.golang.org/grpc#WithContextDialer ; the admin service
+request/response messages at tag v1.31.3 (search the source for `DescribeClusterResponse` and
+`DescribeHistoryHostRequest`).
+
+**Build.** `internal/cluster`: one lazy connection per frontend node; `Serving`, `Describe`, `Shards`; views
+kept per frontend. Check that the admin messages decode against both supported binaries (TRD open point 8).
+
+**Verify.** `go test -race ./internal/cluster/...` with fake services (`grpc/test/bufconn`).
+
+**Pitfalls.** SERVING is per service name: `temporal.api.workflowservice.v1.WorkflowService`. Never merge
+views from different frontends.
+
+**Done when.** Fakes cover a missing member, disagreeing views and a shard dip.
+
+### T3.7 Per-role gate
+
+**Goal.** A role is touched only when its ring is otherwise whole, and the next step waits until it is back.
+
+**Learn first.** TRD "Gate per role"; concepts "Membership", "History shards".
+
+**Build.** `internal/gate`: before/after per role, 2 s polling, stable twice, timeout report with the journal
+tail; the single-instance and single-frontend warnings.
+
+**Verify.** `go test -race ./internal/gate/...` with a fake cluster: flapping ring, shard dip, unknown member,
+single-instance role, last frontend.
+
+**Pitfalls.** "In the ring" for matching and worker is all the cluster can tell you; do not invent a partition
+check. History "owns > 0" catches a member that has not acquired anything. Use an injected clock in tests,
+never `time.Sleep`.
+
+**Done when.** Every row passes in milliseconds; refusal codes match the app-flow index.
+
+### T3.8 `tops bootstrap`
+
+**Goal.** Fresh VPSLAB to a healthy cluster in one command, resumable.
+
+**Learn first.** App-flow `bootstrap` and journey 2; concepts "Cluster immutables".
+
+**Build.** `internal/rollout` bootstrap: lock, preflight (sizing, ports, OS, units, clock), datastore preflight,
+plan, confirm, stage, schema, validate, role stages with gates, namespaces, printed manual steps, resume;
+`internal/runlog`; the live progress line and prompts (design brief TTY rules). First check on the lab
+whether a frontend reports SERVING before any history exists (TRD open point 5); adjust stage 1's gate to
+what you observe.
+
+**Verify.** T3 acceptance rows "Fresh lab", "Used datastore", "Resume", "Resume onto recreated nodes".
+
+**Pitfalls.** Recreated nodes have new host keys: `make lab-renew` rewrites `lab/keys/known_hosts`; tops never
+accepts a key itself. Resume is decided by the datastore (`cluster_metadata_info` names this cluster), not by
 what the nodes look like.
 
-### T3.7 `tops node add`
+**Done when.** Bootstrap from a fresh lab < 5 min; kill-and-rerun resumes.
 
-**Goal.** A node in the spec joins a running cluster; shard movement is reported.
+### T3.9 `status`, `ns`, e2e, v0.3.0
 
-**Learn first.** App-flow journey 5; consistent hashing (why the split is uneven): concepts "History shards".
+**Goal.** A cluster you can see whole, with namespaces as the spec says.
 
-**Build.** Firewall on existing nodes first, then stage, write, start, gate; shards before and after.
+**Learn first.** Namespaces: https://docs.temporal.io/namespaces ; `OperatorService`/`WorkflowService`
+namespace calls in `go.temporal.io/api`.
 
-**Verify.** T3 acceptance row "Remove and add round trip".
+**Build.** `tops status` (per node and role; exit 5); `ns list`, `ns ensure` (lock; wait until visible on
+every frontend); e2e for the rows below.
 
-**Pitfalls.** Do not assert an even split. Do not assert "never below 512" either: per-host counts are
-sampled one host after another, and a shard is briefly unowned (or counted twice) while it moves. Bound
-the dip instead.
+**Verify.** T3 acceptance.
 
-### T3.8 `tops node remove`
+**Pitfalls.** Retention is a duration in the API and days in the UI; compare durations.
 
-**Goal.** A node leaves after its shards are safely owned elsewhere.
-
-**Build.** Headroom refusal, LB reminder, `disable-now`, wait for full ownership; `refused.node_stopped` in
-`apply` (assumes Q10).
-
-**Verify.** T3 acceptance rows "Remove and add", "Handover gaps stay short", "Remove refused".
-
-**Pitfalls.** tops never edits the node list; the operator does, then `apply` cleans the firewall.
-
-### T3.9 Drop the bash fixture; e2e; v0.3.0
-
-**Build.** Delete the bash-built fixture from `test/e2e`; adoption is now tested by deleting `/var/lib/tops`
-after a bootstrap.
-
-**Verify.** Every row below.
+**Done when.** T3 acceptance green; v0.3.0 published with the e2e report.
 
 ### T3 acceptance
 
-| Check                                                                                            | Command                                                                                          |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Fresh lab to a healthy cluster with UI, under 5 min                                              | `make reset && make up && time tops bootstrap -y && tops status --json \| jq -e '.healthy and .temporal.shards.owned == 512'` |
-| UI reachable from an admin address                                                               | `curl -fsS -o /dev/null http://10.78.0.11/`                                                      |
-| `/health` for the load balancer                                                                  | `curl -fsS http://10.78.0.12/health` (from an admin or healthcheck address)                     |
-| Second plan clean                                                                                | `tops plan; test $? -eq 0`                                                                       |
-| Firewall from the spec                                                                           | add `10.78.0.40` to `access.clients`; `tops plan --json \| jq -e '[.nodes[].firewall[] \| select(.group=="clients") \| .add[]] \| unique == ["10.78.0.40/32"]'` |
-| Bootstrap refuses a used datastore                                                               | `make down && make up` (nodes lose their units, PostgreSQL keeps its data); spec `cluster: other`; `tops bootstrap -y --json \| jq -e '.error.code == "refused.datastore_in_use"'` |
-| Bootstrap resumes                                                                                | e2e: kill tops after node 1 is healthy; `tops bootstrap -y` again exits 0 and starts only node 2 |
-| Remove and add round trip, shards owned throughout                                               | `tops node remove tscale-02 -y && tops status --json \| jq -e '.temporal.shards.owned == 512'`; delete it from the spec, `tops apply -y`; put it back, `tops node add tscale-02 -y && tops status --json \| jq -e '(.temporal.rings.history.members \| length) == 2'` |
-| Handover gaps stay short during the round trip                                                   | e2e samples `DescribeHistoryHost` every 2 s during both commands; every dip below 512 recovers within 10 s; the longest dip is in the report |
-| Remove refused when survivors cannot hold the shards                                             | e2e with `shards: 4096`, `profile: 2c4g` on 2 nodes: `tops node remove tscale-02 -y; test $? -eq 3` |
+| Check                                     | Command                                                                                       |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Fresh lab to healthy, < 5 min             | `make lab-reset && time tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.healthy and .temporal.shards.owned == 512'` |
+| Rings per role match the spec             | `tops -e lab status --json \| jq -e '(.temporal.rings.history.members \| length) == 2 and (.temporal.rings.matching.members \| length) == 3'` |
+| One unit per role                         | `ssh -F lab/keys/ssh_config vps-03 systemctl list-units 'temporal@*' --no-legend \| wc -l` = 2 |
+| Second plan clean                         | `tops -e lab plan; test $? -eq 0`                                                             |
+| Status exits 5 with a node down           | `docker stop vps-02; tops -e lab status; test $? -eq 5; docker start vps-02`                  |
+| Bootstrap refuses a used datastore        | `make lab-renew` (PostgreSQL kept); spec `cluster: other`; `tops -e lab bootstrap -y --json \| jq -e '.result == "refused"'`; exit 3 `refused.datastore_in_use` |
+| Bootstrap resumes                         | e2e: kill tops after the history stage; re-run exits 0 and starts only what is missing        |
+| Resume onto recreated nodes               | start a workflow; `make lab-renew`; `tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.healthy and .temporal.shards.owned == 512'`; the workflow completes; `tops -e lab ns --json` lists the namespaces unchanged |
+| `ns ensure` idempotent                    | `tops -e lab ns ensure -y && tops -e lab ns ensure -y --json \| jq -e '.result == "nothing"'` |
+| Lock refuses a second run                 | e2e: two `bootstrap` at once; one exits 3 `lock.held`                                          |
 
-T3 lets temporal-node-scale delete `scripts/` entirely, the root `compose.yaml`, `.env.example`, `config/`
-except `dynamicconfig.yaml`, `lab/temporal.env`, `make push`, `make ui-up`, `make ui-down`. Window until T4:
-no upgrade path; the lab stays on 1.31.3.
+# T4: change safely (v0.4.0)
 
-## T4: upgrade with schema migration (v0.4.0)
+Demo: a hot key changes with no restart; a restart key restarts each reader once, role-major; killing a node
+mid-apply stops the rollout; rollback and its undo; a hand edit makes `drift` exit 2; `promote` then `diff` is
+clean.
 
-### T4.1 Two supported minors
+### T4.1 Safety rules
 
-**Goal.** Templates, schema targets and audit fixtures for 1.30.x and 1.31.x (assumes Q11).
+**Goal.** Every refusal of the PRD safety table is a pure function with pass and refuse rows.
 
-**Learn first.** Temporal upgrade guide: https://docs.temporal.io/self-hosted-guide/upgrade-server ;
-the 1.31.0 release notes for config and metric changes.
+**Learn first.** PRD "Safety"; TRD "Persistence identity"; app-flow refusal index.
 
-**Build.** Release table, per-minor schema targets (1.18/1.13, 1.19/1.14), 1.30.7 fixtures; helper
-`validate` with both real binaries.
+**Build.** `internal/safety`: immutables, store identity (`postgres.host/port`), version via apply, unknown
+member, node too small, headroom, DB budget, node stopped, last role instance, no TTY, `--force` with `-y`.
+Each returns `nil` or a `*term.UserError` with what/why/fix.
 
-**Verify.** `make helper-test` validates the same render with 1.30.7 and 1.31.3.
+**Verify.** `go test -race -cover ./internal/safety/...` (>= 90%; boundary rows exactly at each limit).
 
-**Pitfalls.** A config key new in 1.31 that 1.30 rejects is exactly what this catches; add a per-version
-template branch only for a key that needs it.
+**Pitfalls.** No I/O in rules, or the coverage target is out of reach.
 
-### T4.2 Upgrade path rules
+**Done when.** One function per refusal row in scope; coverage >= 90%.
 
-**Build.** Safety rules: downgrade, minor skip, unsupported, mixed versions, backup confirmation.
+### T4.2 Plan: change classes per role and drift
 
-**Verify.** Table tests over from/to/mixed states.
+**Goal.** Per role: hot, restart, start or stop, and why; drift separate from intended change.
 
-**Pitfalls.** Two versions during a resumed upgrade are legal; three are not.
+**Learn first.** TRD "Plan and apply"; concepts "Static vs dynamic config".
 
-### T4.3 Upgrade rollout
+**Build.** Classify each changed dynamic-config key through the catalog class (unknown = restart, noted);
+file classes per role; role start/stop from `roles` vs `applied.json`; drift lines from `applied.json`.
 
-**Goal.** Stage and validate everywhere, migrate the schema once, roll binaries with the gate, resume.
+**Verify.** `go test -race -cover ./internal/plan/...` (>= 90%; a property test: no secret in any diff).
 
-**Learn first.** Concepts "Schema versions" (why schema first, why the old binary runs on the new schema).
+**Pitfalls.** A changed `limits.conf` also changes `GOMEMLIMIT`: one restart, not two.
 
-**Build.** `rollout` upgrade per TRD "Upgrade and schema migration".
+**Done when.** Every row of the TRD classification table has a test.
 
-**Verify.** T4 acceptance rows.
+### T4.3 `apply` and `restart`
 
-**Pitfalls.** Nothing restarts before the schema step succeeds. Resume skips what is done.
+**Goal.** The cluster converges one role on one node at a time and stops at the first failure.
 
-### T4.4 Spec write-back and v0.4.0
+**Learn first.** App-flow `apply`, `restart`, journeys 3 and 4; SRE book, release engineering:
+https://sre.google/sre-book/release-engineering/
 
-**Learn first.** `yaml.Node` round-tripping: https://pkg.go.dev/go.yaml.in/yaml/v3#Node
+**Build.** `internal/rollout` apply (lock first, plan under the lock, stage parallel, hot parallel,
+restart/start/stop role-major with gates); `tops apply [--node] [--force]`, `tops restart <role>|--all`. Run
+the lab check of every `hot` class entry (`lab: pending`), record the result as its evidence, and turn on the
+test that fails on any `pending` left.
 
-**Build.** Rewrite only `temporal.version`, comments and order kept. e2e; release.
+**Verify.** T4 acceptance rows "Hot key", "Restart key", "Killing a node", "Lock".
 
-**Verify.** T4 acceptance row "Spec rewritten, comments kept".
+**Pitfalls.** Re-plan inside `apply`; never execute a plan computed before the lock. `--force` skips the
+before-gate only, never with `-y`.
+
+**Done when.** The rows pass; no `lab: pending` remains.
+
+### T4.4 `rollback`
+
+**Goal.** Any apply can be undone, and the undo can be undone.
+
+**Learn first.** App-flow `rollback` and journey 12; TRD "Snapshots, history, rollback".
+
+**Build.** `rollback list`, `rollback <id>` (history merged across nodes; prefix ids; role order as apply).
+
+**Verify.** T4 acceptance row "Rollback and undo".
+
+**Pitfalls.** After a rollback the spec still says the new thing: say so.
+
+**Done when.** Rollback of a rollback restores the original bytes on every node.
+
+### T4.5 `drift`
+
+**Goal.** Changes made behind tops' back are found in one read-only run.
+
+**Learn first.** Terraform drift detection: https://developer.hashicorp.com/terraform/tutorials/state/resource-drift ;
+TRD "Drift".
+
+**Build.** `tops drift` from `facts` and `applied.json`; units vs enabled roles; binary vs `current`; unknown
+ring members; exit 0/2/5.
+
+**Verify.** T4 acceptance row "Drift".
+
+**Pitfalls.** A role stopped by `node remove` is not drift: read its history record.
+
+**Done when.** Each finding type has an e2e row.
+
+### T4.6 `promote`, e2e, v0.4.0
+
+**Goal.** Lab's proven values written into staging's files, never its identity.
+
+**Learn first.** `yaml.Node` editing with comments kept: https://pkg.go.dev/go.yaml.in/yaml/v3#Node ; TRD
+"Diff and promote".
+
+**Build.** `tops promote <from> <to> [--only] [--partial] [-y]`; refuses `temporal.version` with the upgrade
+command; validates the target after writing and restores the files if it fails.
+
+**Verify.** T4 acceptance row "Promote".
+
+**Pitfalls.** Re-encoding a whole `yaml.Node` tree can reorder or reflow; change only the target nodes and
+check `git diff --numstat`.
+
+**Done when.** T4 acceptance green; v0.4.0 published; temporalScale deletes its bash lab (PRD milestones).
 
 ### T4 acceptance
 
-| Check                                                                                  | Command                                                                                          |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Bootstrap at the previous minor                                                        | spec `temporal.version: 1.30.7`; `make reset && make up && tops bootstrap -y && tops status --json \| jq -e '.datastore.schemas.temporal == "1.18"'` |
-| Upgrade migrates once, rolls, no unowned shards                                        | `tops upgrade 1.31.3 -y --backup-confirmed --json \| jq -e '.result == "ok"' && tops status --json \| jq -e '.datastore.schemas.temporal == "1.19" and .datastore.schemas.temporal_visibility == "1.14" and all(.nodes[]; .version == "1.31.3")'` |
-| Schema migrated once                                                                   | `test "$(docker exec tscale-pg psql -U temporal -d temporal -Atc "SELECT count(*) FROM schema_update_history WHERE new_version = '1.19'")" = 1` |
-| Shards owned throughout                                                                | e2e samples ownership every 2 s during the upgrade; every dip below 512 recovers within 10 s     |
-| Spec rewritten, comments kept                                                          | `grep -q 'version: 1.31.3' cluster.yaml && git diff --numstat cluster.yaml \| awk '{exit !($1 == 1 && $2 == 1)}'` |
-| Two-minor jump refused                                                                 | from 1.30.7: `tops upgrade 1.32.1 -y --backup-confirmed; test $? -eq 3`                          |
-| Downgrade refused                                                                      | `tops upgrade 1.30.7 -y --backup-confirmed; test $? -eq 3`                                       |
-| Upgrade rollback puts the binary back, schema stays                                    | `tops rollback <upgrade id> -y && tops status --json \| jq -e 'all(.nodes[]; .version == "1.30.7") and .datastore.schemas.temporal == "1.19"'` |
-| Resume after an interrupted upgrade                                                    | e2e: kill tops after the first node switched; re-run `tops upgrade 1.31.3`; schema step is a no-op, only node 2 restarts |
+| Check                                          | Command                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Hot key, no restart                            | set a `hot` frontend key; `tops -e lab apply -y --json \| jq -e '[.steps[] \| select(.action=="restart")] \| length == 0'` |
+| Restart key restarts each reader once, in order | set `history.cacheTTL`; `tops -e lab apply -y --json \| jq -e '[.steps[] \| select(.action=="restart") \| .role] == ["history","history"]'` |
+| Shards owned throughout                        | e2e samples ownership every 2 s; every dip below 512 recovers within 10 s                  |
+| Killing a node stops the rollout               | e2e `TestApplyStopsWhenNodeDies`: `docker kill vps-02` while vps-01 history restarts; exit 1; vps-02 untouched |
+| Rollback and undo                              | `tops -e lab rollback <id> -y && tops -e lab status && tops -e lab rollback <new id> -y && tops -e lab status` |
+| Lock refuses a second run; fencing             | e2e: two applies, one `lock.held`; a run past its lease gets `lock.lost`                   |
+| Drift                                          | edit a rendered file on vps-02; `tops -e lab drift; test $? -eq 2`; `tops -e lab apply -y`; `tops -e lab drift; test $? -eq 0` |
+| Promote                                        | `tops promote lab staging -y && tops diff lab staging; test $? -eq 0` (fixture fleet)       |
+| Store identity                                 | `postgres.host: 10.80.0.21` in a temp env: `tops -e bad plan --json \| jq -e '.refusals[0].code == "refused.store_identity"'` |
 
-T4 lets temporal-node-scale delete nothing more.
+# T5: look (v0.5.0)
 
-## T5: profile, every refusal tested, v1.0.0
+Demo: under omes load `tops -e lab audit` names the busy layer; `tops -e lab pprof history --node vps-01 heap`
+saves a profile; `tops -e lab investigate '<url>'` writes a report.
 
-### T5.1 `tops profile`
+### T5.1 `top`
 
-**Goal.** CPU share per role inside the all-in-one process.
+**Goal.** Per role: memory against its limits, Go heap against GOMEMLIMIT, CPU against its weight.
 
-**Learn first.** Go diagnostics and pprof: https://go.dev/doc/diagnostics#profiling ; the profile format:
-https://pkg.go.dev/github.com/google/pprof/profile
+**Learn first.** cgroup v2 `memory.events`, PSI: https://docs.kernel.org/accounting/psi.html ; Go GC guide:
+https://go.dev/doc/gc-guide
 
-**Build.** `internal/roleprof` (attribute each sample by the first `go.temporal.io/server/service/<role>`
-frame from the leaf; runtime, persistence, other); `tops profile <node> [--seconds N]` over a tunnel to the
-loopback pprof port, raw profile saved.
+**Build.** Helper `top` per unit; `tops top [--node] [--role] [-w N]` with `memory_heap`, `gomaxprocs` per role.
 
-**Verify.** T5 acceptance row "Profile attribution".
+**Verify.** `tops -e lab top --json | jq -e 'all(.nodes[].roles[]; .top.memHighBytes > 0 and .goMaxProcs > 0)'`
 
-**Pitfalls.** Shared code (persistence, gRPC) runs on behalf of a role but outside its package: report it
-as its own bucket rather than guessing.
+**Pitfalls.** Find the unit's cgroup through `/proc/<MainPID>/cgroup`. `memory.high` = `max` means unset.
 
-### T5.2 Every refusal has an e2e test
+**Done when.** Every role has every column; `-w` redraws without scrolling on a TTY.
 
-**Build.** One `TestRefuse…` per row of the PRD Safety table and the app-flow refusal index.
+### T5.2 `logs`
 
-**Verify.** `grep -c 'func TestRefuse' test/e2e/*.go` equals the rows of the refusal index.
+**Goal.** One role's journal across nodes, merged by time, filterable.
 
-### T5.3 Coverage, docs, v1.0.0
+**Learn first.** `journalctl -o json` fields: https://www.freedesktop.org/software/systemd/man/latest/journalctl.html ;
+Temporal's zap JSON lines.
 
-**Build.** Coverage to the gates; README (5-minute read: what, install, lab quickstart, command table,
-safety model); command reference generated from cobra (`docs/commands/`); completions in the archives.
+**Build.** Helper `journal` over several units (streaming); `internal/journal` (format, filters, merge by
+`ts`, summary); `tops logs [--node] [--role] [-f -E -q -g -t -s -n --raw]`.
+
+**Verify.** `test $(tops -e lab logs --role history -n 50 | grep -o 'vps-0[12]' | sort -u | wc -l) -eq 2`
+
+**Pitfalls.** Non-JSON lines still print. Each node has its own clock. Follow ends cleanly on Ctrl-C (stdin
+EOF to the helper).
+
+**Done when.** `-f` across three nodes stops cleanly; `--raw` is valid NDJSON.
+
+### T5.3 Metrics and `audit`
+
+**Goal.** Two scrapes of every role, one line per layer, the first marked line says where to look.
+
+**Learn first.** Exposition format: https://prometheus.io/docs/instrumenting/exposition_formats/ ; histograms:
+https://prometheus.io/docs/practices/histograms/ ; Temporal cluster metrics:
+https://docs.temporal.io/references/cluster-metrics ; the USE method: https://www.brendangregg.com/usemethod.html
+
+**Build.** `internal/metrics` (scrape per role port, deltas, quantiles from bucket deltas); `internal/audit`
+(layers, verdicts, advice). Thresholds: record healthy baselines under T2.1b's reference load and a saturated
+run (double the rate); set each layer's warn and red between them; keep both runs as fixtures.
+
+**Verify.** `go test -race -cover ./internal/metrics/... ./internal/audit/...` (healthy, history behind,
+pools saturated, idle, missing); T5 acceptance.
+
+**Pitfalls.** Counter resets are restarts, not negative rates. Long polls are waiting, not work. Missing is
+never green.
+
+**Done when.** Both fixtures produce the expected verdicts; thresholds cite their runs.
+
+### T5.4 `pprof`
+
+**Goal.** A CPU or heap profile of one role on one node, saved locally.
+
+**Learn first.** `net/http/pprof`: https://pkg.go.dev/net/http/pprof ; Go diagnostics: https://go.dev/doc/diagnostics
+
+**Build.** `tops pprof <role> --node N [cpu|heap] [--seconds]` through a tunnel to `127.0.0.1:79xx`.
+
+**Verify.** `go tool pprof -top "$(tops -e lab pprof history --node vps-01 heap --json | jq -r .path)" | head`
+
+**Pitfalls.** A CPU profile blocks for `--seconds`; say so before it starts. Write to a temp file and rename.
+
+**Done when.** Both kinds open in `go tool pprof`.
+
+### T5.5 `investigate`
+
+**Goal.** One URL in, one report out.
+
+**Learn first.** Workflow execution and history: https://docs.temporal.io/workflow-execution ; task queues:
+https://docs.temporal.io/task-queue ; `pg_stat_activity` (link in T2.4).
+
+**Build.** `internal/investigate` (UI URL parsing; report sections of the app flow); journal grep across every
+role's units in the workflow's window; `pg_stat_activity` rows of the Temporal role.
+
+**Verify.** `tops -e lab investigate "http://10.80.0.11/namespaces/default/workflows/<id>/<run>/history" && ls investigate-*.md`
+
+**Pitfalls.** Workflow ids are URL-encoded and may contain `/`. `pg_stat_statements` is not installed on
+`vps-pg`; do not depend on it.
+
+**Done when.** URL parsing has a table test with encoded ids; the report has every section even when a source
+is unreachable.
+
+### T5.6 `targets`, e2e, v0.5.0
+
+**Goal.** Prometheus scrape targets as a function of the spec.
+
+**Learn first.** `file_sd_config`: https://prometheus.io/docs/prometheus/latest/configuration/configuration/#file_sd_config
+
+**Build.** `tops targets [--job]`: one group per role instance with `role`; the `node` job arrives with T6.
+
+**Verify.** `tops -e lab targets --job temporal | jq -e 'length == 10 and all(.[]; .labels.role != null)'`
+
+**Pitfalls.** Output must be stable (sorted) so temporalScale's generated file does not churn.
+
+**Done when.** T5 acceptance green; v0.5.0 published.
 
 ### T5 acceptance
 
-| Check                                                   | Command                                                                                   |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Profile attribution under load                          | omes running; `tops profile tscale-01 --seconds 30 --json \| jq -e '([.shares[] \| select(.role != "other") \| .percent] \| add) >= 90'` |
-| Every refusal has an e2e test                           | `make e2e LAB=$LAB` green; `grep -c 'func TestRefuse' test/e2e/*.go` = rows in the refusal index |
-| Coverage                                                | `make cover` (fails below the gates)                                                     |
-| Full suite on the release binary                        | `make e2e LAB=$LAB TOPS=$(go env GOPATH)/bin/tops`                                         |
+| Check                              | Command                                                                                 |
+| ---------------------------------- | --------------------------------------------------------------------------------------- |
+| Audit names the busy layer         | omes at the saturated rate; `tops -e lab audit --json \| jq -e '.closest != null'`       |
+| Audit healthy at the baseline      | omes at the reference rate; `tops -e lab audit --json \| jq -e '.verdict == "ok"'`       |
+| Per-role top                       | T5.1 verify                                                                             |
+| Logs merged                        | T5.2 verify                                                                             |
+| Profile saved and readable         | T5.4 verify                                                                             |
+| Investigate report                 | T5.5 verify                                                                             |
+| Targets                            | T5.6 verify                                                                             |
 
-temporal-node-scale M1 closes on v1.0.0.
+# T6: edges, UI, node and role changes (v0.6.0)
 
-## T6: roles, Cassandra, Elasticsearch, v2.0.0
+Demo: remove and re-add vps-03; move matching off vps-01 and back, shards owned throughout; the Web UI on
+vps-01.
 
-Starts when temporal-role-scale R0 is done (its lab on 10.80.0.0/24) and v1.0.0 is released. Read
-role-scale's TRD (`temporal-role-scale/docs/trd.md`, "How the roles talk") and its concepts first. Each
-task names the role-scale gap (N1-N7, PRD "Milestones") it closes.
+### T6.1 Firewall, nginx, journald
 
-### T6.1 Spec v2 and lab profiles (N3, N4)
+**Goal.** Nodes accept only the traffic the spec allows; frontends answer `/health`.
 
-**Goal.** `roles`, per-node profiles, Cassandra and ES persistence in the spec; node-scale's spec migrated.
+**Learn first.** `iptables-restore`: https://man7.org/linux/man-pages/man8/iptables-restore.8.html ; nginx
+access module: https://nginx.org/en/docs/http/ngx_http_access_module.html ; `journald.conf`:
+https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html
 
-**Learn first.** Backend-schema "v2 (T6): roles", "Profiles"; AGENTS.md (no compatibility layer).
+**Build.** Render the chain (peers = nodes with Temporal roles; clients rule on frontend nodes), boot unit,
+nginx site and allow lists (frontend and ui nodes), journald drop-in; helper effects with test and restore.
 
-**Build.** Spec v2 and validation (roles, `profile` required iff roles, `ui.temporalAddress`, Fixed
-fields); size-named lab profiles; node-scale `cluster.yaml` migrated in the same release.
+**Verify.** `make helper-test`: chain present after `systemctl restart temporal-firewall`; a bad nginx file is
+rejected and the old one restored.
 
-**Verify.** `go test -race -cover ./internal/spec/...`; `tops validate` on both labs' specs.
+**Pitfalls.** `ESTABLISHED,RELATED` before `DROP`. Never touch Docker's chains. Port 22 stays open first.
 
-**Pitfalls.** No v1 reader left behind: v2 refuses a v1 spec with a message that says what to change.
+**Done when.** A source outside `access` cannot reach 7233 in the e2e suite.
 
-### T6.2 Topology, units, firewall, nginx, targets per role (N6, N7)
+### T6.2 node_exporter and the `ui` role
 
-**Goal.** Each host gets exactly what its roles need.
+**Goal.** The Web UI runs on nodes that list `ui`; every node exports host metrics.
 
-**Learn first.** `temporal-server start --help` (`--service`); role-scale TRD "Ports per host".
+**Learn first.** Temporal Web UI self-hosting: https://docs.temporal.io/web-ui ; the ui-server release assets
+for the pinned version (TRD open point 7: confirm which repository publishes them).
 
-**Build.** `topology.Services` from roles; units with `--service`; peers = nodes with roles; clients rule
-on frontend hosts plus the UI host; nginx and `/health` per TRD "T6 extension points"; `targets` with
-`role`, nothing for `roles: []`.
+**Build.** Spec: `ui` joins the role list; `ui.version`, `ui.temporalAddress` and their rules (D24). Packages
+in `stage`; `temporal-ui.service` and its config (`127.0.0.1:7233` or `ui.temporalAddress`); the ui gate; ui
+sized inside the node's reserve; the `node` targets job.
 
-**Verify.** Golden files for each host kind; T6 acceptance rows "Targets carry roles", "No peers rule for
-the UI host", "`/health` only on frontends".
+**Verify.** `curl -fsS -o /dev/null http://10.80.0.11/` from an admin address; `tops -e lab targets --job node | jq -e 'length == 3'`.
 
-**Pitfalls.** `/health` proxies to the frontend's HTTP port; on a history host it would always fail, and a
-load balancer would mark a healthy cluster down.
+**Pitfalls.** The UI dials Temporal from the node; on a node without a frontend it needs the client firewall
+rule on a frontend node.
 
-### T6.3 Rings through frontends; per-role gate; bootstrap stages (N2)
+**Done when.** `validate` accepts `ui` only now; the UI answers through nginx.
 
-**Goal.** The gate works when most hosts have no frontend.
+### T6.3 Plan for host files
 
-**Learn first.** TRD "Ring gate" (v2 part); concepts "Membership".
+**Goal.** `plan` shows firewall and host-file changes like any other change.
 
-**Build.** Ring views from frontend hosts only; gate per role; shard checks only for history; bootstrap
-role stages; `--force` for the last running frontend.
+**Build.** Firewall delta per port group; unknown files in owned dirs shown as removals.
 
-**Verify.** Gate tests with a fake cluster of role hosts; T6 acceptance row "Per-role restart gate".
+**Learn first.** TRD "Plan and apply" (firewall, nginx, host classes).
 
-**Pitfalls.** Before the first frontend runs, nothing can be read: that is why frontends start first.
+**Verify.** add `10.80.0.40` to `access.clients`; `tops -e lab plan --json | jq -e '[.nodes[].firewall[] | select(.group=="clients") | .add[]] | unique == ["10.80.0.40/32"]'`
 
-### T6.4 Cassandra reads, health and schema (N5)
+**Pitfalls.** Peer additions apply before a node starts; removals after it is gone.
 
-**Learn first.** Concepts (Cassandra items); gocql `ClusterConfig.Dialer`:
-https://pkg.go.dev/github.com/apache/cassandra-gocql-driver/v2 ; `temporal-cassandra-tool --help`.
+**Done when.** Every port group has a plan row test.
 
-**Build.** `datastore/cassandra`: per-host up, quorum, replication, schema version, identity; helper
-`schema` with the cassandra tool (create-keyspace with RF and DC from the spec, setup, update).
+### T6.4 Roles added to or removed from a node
 
-**Verify.** `make helper-test` against a single-node Cassandra container (re-run no-op); T6 acceptance
-row "Cassandra health in status".
+**Goal.** Editing `roles` and running `apply` starts or drains a role and resizes the others.
 
-**Pitfalls.** The driver discovers peers and dials their addresses: the dialer must tunnel every host, not
-only the first contact point.
+**Learn first.** App-flow journey 5; concepts "Per-role scaling signals".
 
-### T6.5 Elasticsearch health and schema (N5)
+**Build.** Start and stop steps in `rollout` (stop: refuse last instance, `disable --now`, wait out of the
+ring, remove files, drop from `applied.json`).
 
-**Learn first.** Cluster health API: https://www.elastic.co/guide/en/elasticsearch/reference/8.19/cluster-health.html ;
-`temporal-elasticsearch-tool` README (EXPERIMENTAL).
+**Verify.** T6 acceptance row "Move matching".
 
-**Build.** `datastore/elasticsearch`: `_cluster/health`, index exists; schema steps setup, create-index,
-update, in that order.
+**Pitfalls.** The node's other roles grow or shrink: they restart too, and the order must keep every ring
+whole.
 
-**Verify.** `make helper-test` against a single-node ES container (re-run no-op).
+**Done when.** The row passes with shards owned throughout.
 
-**Pitfalls.** An index created before the template gets dynamic mapping: order is the contract.
+### T6.5 `node add`
 
-### T6.6 Render Cassandra and ES; persistence identity (N1)
+**Goal.** A node in the spec joins with its roles, firewall first.
 
-**Learn first.** TRD "Persistence identity"; concepts "Cluster immutables".
+**Learn first.** App-flow `node add`.
 
-**Build.** `temporal.yaml` for Cassandra + ES v8 (sprig `urlParse`, as measured); the Fixed checks and the
-store identity check through new addresses.
+**Build.** Firewall on existing nodes first; stage, validate, write; start roles in stage order with gates;
+shards moved reported.
 
-**Verify.** T6 acceptance rows "Persistence change refused", "Keyspace change refused".
+**Verify.** T6 acceptance row "Remove and add".
 
-**Pitfalls.** `DescribeCluster` says "cassandra" for any keyspace: the kind check alone misses N1.
+**Pitfalls.** Do not assert an even shard split, or "never below 512"; bound the dip.
 
-### T6.7 Status, audit, top across roles; node add/remove per role
+**Done when.** The row passes; `refused.not_in_spec` and `refused.node_in_use` have e2e rows.
 
-**Build.** `status` per role with the v2 `datastore` shape; `audit` and `top` over role hosts; `node add`
-and `node remove` move only that role's ring (no headroom check for non-history roles).
+### T6.6 `node remove`, e2e, v0.6.0
 
-**Verify.** T6 acceptance rows "Frontend-only change", "Add a matching host".
+**Goal.** A node leaves without making any role instance-less.
 
-### T6.8 e2e on both labs; v2.0.0
+**Learn first.** App-flow `node remove`.
 
-**Verify.** Every row below on the role-scale lab, and the full node-scale suite on the migrated spec.
+**Build.** Last-instance and headroom refusals; LB reminder; stop roles in reverse stage order; history record;
+`refused.node_stopped` in `plan`.
 
-### T6 acceptance (role-scale lab unless noted)
+**Verify.** T6 acceptance.
 
-| Check                                                                          | Command                                                                                    |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| Split cluster bootstraps                                                       | `make reset && make up && tops bootstrap -y` (role-scale repo)                             |
-| Cassandra + ES + 512 shards, history only                                      | `tops status --json \| jq -e '.temporal.persistenceStore == "cassandra" and .temporal.visibilityStore == "elasticsearch" and .temporal.shards.owned == 512 and (.temporal.rings.history.members \| length) == 2'` |
-| Cassandra health in status                                                     | `tops status --json \| jq -e '.datastore.cassandra.quorum and ([.datastore.cassandra.hosts[] \| select(.up)] \| length) == 3 and .datastore.elasticsearch.status == "green"'` |
-| Per-role restart gate                                                          | `make kill ARGS=hist-2`; wait until `tops status --json \| jq -e '.temporal.shards.owned == 512'`; `tops restart trscale-hist-1; test $? -eq 3`; `tops restart trscale-fe-1 -y` exits 0; `make revive ARGS=hist-2` |
-| Frontend-only change moves no shards                                           | fe-1 and fe-2 `profile: lab-384m` → `lab-256m`; `tops apply -y --json \| jq -e '[.steps[] \| select(.action=="restart") \| .node] \| all(startswith("trscale-fe"))'` |
-| Profile larger than the container refused                                      | fe-1 `profile: lab-768m` (MemoryMax 680M above its 384 MiB `mem_limit`) in `cluster.bad.yaml`; `tops plan -f cluster.bad.yaml; test $? -eq 3` |
-| Persistence change refused                                                     | `persistence` replaced by a `postgres` block in `cluster.bad.yaml`; `tops plan -f cluster.bad.yaml; test $? -eq 3` |
-| Keyspace change refused                                                        | `keyspace: temporal_b` in `cluster.bad.yaml`; `tops plan -f cluster.bad.yaml --json \| jq -e '.refusals[0].code == "refused.immutable"'` |
-| Targets carry roles; none for the UI host                                      | `tops targets --job temporal \| jq -e 'length == 7 and all(.[]; .labels.role != null and .labels.node != "trscale-mon")'` |
-| No peers rule for the UI host                                                  | `! make ssh ARGS='hist-1 sudo iptables -S TEMPORAL_INPUT' \| grep -q 10.80.0.70`             |
-| `/health` only on frontends                                                    | `curl -fsS http://10.80.0.11/health && make ssh ARGS='hist-1 test ! -e /etc/nginx/conf.d/temporal.conf'` |
-| Add a matching host                                                            | role-scale R-D9: `tops node add trscale-match-3 -y`; history shards per host unchanged       |
-| node-scale still green on v2                                                   | `make e2e LAB=$LAB` (node-scale lab, migrated spec)                                       |
+**Pitfalls.** The node remains in the spec until the operator deletes it; `drift` must not report its stopped
+roles.
+
+**Done when.** T6 acceptance green; v0.6.0 published.
+
+### T6 acceptance
+
+| Check                                  | Command                                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `/health` on frontend nodes            | `curl -fsS http://10.80.0.13/health`                                                       |
+| UI reachable                           | `curl -fsS -o /dev/null http://10.80.0.11/`                                                |
+| Remove and add                         | `tops -e lab node remove vps-03 -y`; delete it; `apply`; restore it; `tops -e lab node add vps-03 -y && tops -e lab status --json \| jq -e '(.temporal.rings.matching.members \| length) == 3'` |
+| Move matching                          | drop `matching` from vps-01; `apply`; `tops -e lab status --json \| jq -e '(.temporal.rings.matching.members \| length) == 2'`; add it back; `apply`; 3 again; shards owned throughout |
+| Last instance refused                  | worker only on vps-01; drop it: `tops -e lab plan; test $? -eq 3`                          |
+
+# T7: upgrade (v0.7.0)
+
+### T7.1 Second supported minor
+
+**Goal.** Everything version-specific exists for 1.30 too.
+
+**Learn first.** Temporal upgrade guide: https://docs.temporal.io/self-hosted-guide/upgrade-server ; the 1.31
+release notes.
+
+**Build.** Catalog and class file for 1.30 (start from 1.31's; re-check every cited call site); sizing
+constants re-measured for 1.30 (T2.1b procedure, one size); templates and audit fixtures; release table.
+
+**Verify.** `make generate`; `make helper-test` validates the same render with both binaries.
+
+**Pitfalls.** A key that exists in only one minor must fail `validate` on the other, with the version named.
+
+**Done when.** `knobs` and `capacity` work for a 1.30 spec.
+
+### T7.2 Upgrade path rules
+
+**Goal.** Only safe upgrade paths are allowed.
+
+**Learn first.** TRD "Upgrade".
+
+**Build.** Downgrade, minor skip, unsupported, more than two versions live, backup confirmation.
+
+**Verify.** Table tests over from/to/mixed states.
+
+**Pitfalls.** Patch upgrades within a minor are allowed and still migrate the schema if the tool says so.
+
+**Done when.** Every rule has rows at its boundary.
+
+### T7.3 Upgrade rollout, write-back, v0.7.0
+
+**Goal.** One command upgrades a cluster one minor, schema first.
+
+**Learn first.** App-flow journey 7.
+
+**Build.** TRD "Upgrade": lock, stage, validate, schema once, role-major rolling, `temporal.version` written
+back via `yaml.Node`.
+
+**Verify.** T7 acceptance.
+
+**Pitfalls.** Nothing restarts before the schema step succeeds; resume skips what is done.
+
+**Done when.** T7 acceptance green; v0.7.0 published.
+
+### T7 acceptance
+
+| Check                                   | Command                                                                                   |
+| --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Bootstrap at the previous minor         | spec 1.30.x; `make lab-reset && tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.datastore.schemas.temporal == "1.18"'` |
+| Upgrade migrates once, rolls per role   | `tops -e lab upgrade 1.31.3 -y --backup-confirmed --json \| jq -e '.result == "ok"'`; schemas 1.19/1.14; every role on 1.31.3 |
+| Shards owned throughout                 | e2e sampling; every dip recovers within 10 s                                              |
+| Spec rewritten, comments kept           | `git diff --numstat environments/lab/cluster.yaml` = `1 1`                                 |
+| Skip and downgrade refused              | `tops -e lab upgrade 1.32.x …; test $? -eq 3`; `tops -e lab upgrade 1.30.x …; test $? -eq 3` |
+| Rollback keeps the schema               | `tops -e lab rollback <id> -y`; binaries 1.30.x, schema 1.19                               |
+
+# T8: hardening (v1.0.0)
+
+### T8.1 Sizing under load
+
+**Goal.** The formula holds on the running cluster.
+
+**Learn first.** Your T2.1b README; concepts "Measurement discipline".
+
+**Build.** e2e `TestSizingUnderLoad`: reference load for 30 min on the e2e sizes; assert no `oom_kill`, no
+`memory.events max`, each role's peak below its MemoryHigh, GC CPU share below the bound set in T2.1b.
+Re-derive any constant that fails, with new samples.
+
+**Verify.** The test in the release e2e report.
+
+**Pitfalls.** A pass on an idle workstation proves little; run it with your normal desktop load.
+
+**Done when.** The test passes twice in a row.
+
+### T8.2 Every refusal has an e2e test
+
+**Goal.** Every v1 row of the refusal index is proven.
+
+**Learn first.** App-flow refusal index.
+
+**Build.** One `TestRefuse<Name>` per v1 row.
+
+**Verify.** `grep -c 'func TestRefuse' test/e2e/*.go` = the v1 rows of the index.
+
+**Pitfalls.** Each test asserts both the code and that nothing changed (hashes before and after).
+
+**Done when.** The counts match.
+
+### T8.3 Coverage, docs, v1.0.0
+
+**Goal.** A release a reviewer can install, read and trust.
+
+**Learn first.** Cobra doc generation: https://pkg.go.dev/github.com/spf13/cobra/doc
+
+**Build.** Coverage gates; README (what, install, lab quickstart, command table, safety model, headline goals
+with their measures); command reference generated from cobra (`docs/commands/`); completions in archives.
+
+**Verify.** `make cover`; `make e2e LAB=./lab TOPS=$(go env GOPATH)/bin/tops`.
+
+**Pitfalls.** Generated docs drift unless CI regenerates and diffs them.
+
+**Done when.** v1.0.0 published with a green e2e report; the README path takes a reviewer to a running lab
+cluster in under 15 minutes.
+
+# T9: scheduled apply and `run` (v1.1.0)
+
+### T9.1 `apply --at`
+
+**Goal.** A confirmed plan runs later, or refuses if the cluster moved.
+
+**Learn first.** Terraform saved plans and stale-plan refusal:
+https://developer.hashicorp.com/terraform/cli/commands/apply#plan-file ; TRD "v1.1".
+
+**Build.** Input hashes at confirmation; wait; lock and re-plan at the time; `refused.plan_stale` or apply
+without asking; Ctrl-C before the time cancels cleanly.
+
+**Verify.** e2e: `--at` in 2 min runs; a hand edit during the wait makes it refuse.
+
+**Pitfalls.** Local time for the operator, UTC in the run log; a time already passed today is refused, not
+moved to tomorrow.
+
+**Done when.** Both e2e rows pass.
+
+### T9.2 `run`
+
+**Goal.** A role that will not start can be watched in the foreground.
+
+**Learn first.** `systemd-run --scope`: https://www.freedesktop.org/software/systemd/man/latest/systemd-run.html
+
+**Build.** Streaming helper op; refused while the unit is active; stdin EOF kills the process.
+
+**Verify.** e2e: stop matching on vps-03; `tops -e lab run matching --node vps-03` prints its startup log;
+Ctrl-C leaves the unit stopped.
+
+**Pitfalls.** Run it with the role's environment and limits, as the `temporal` user, or it behaves
+differently from the unit.
+
+**Done when.** v1.1.0 published.
+
+# T10: Cassandra and Elasticsearch (v2.0.0)
+
+Lab: environment `lab-cass` (the same name as temporalScale's): VPSLAB vps-01/02 plus `vps-cass-1..3`
+(10.80.0.51-53, one at a time) and `vps-es` (10.80.0.61) from `test/e2e/vpslab.v2.override.yaml`; vps-03 and
+vps-pg stopped. Measured idle 2026-10-05: about 550 MiB per Cassandra node (256 MB heap), 670 MiB for ES
+(256 MB heap). Memory budget: lab contract (6 GiB).
+
+### T10.1 Learning track and the v2 lab
+
+**Goal.** You have run Temporal on Cassandra + ES by hand once.
+
+**Learn first.** Concepts "v2: Cassandra and Elasticsearch" (quorum, LWT, snitch and DC, repair, templates
+before indices, health colours).
+
+**Build.** The v2 override; `make lab-up V2=1`; by hand: create the keyspace with `temporal-cassandra-tool`,
+the ES template and index, run Temporal against them once.
+
+**Verify.** `docker exec vps-cass-1 nodetool status` shows three `UN`; `curl -s 10.80.0.61:9200/_cluster/health`.
+
+**Pitfalls.** Cassandra refuses to bootstrap a node while another joins: start them one at a time. The keyspace
+names `dc1`; the snitch must report `dc1` too.
+
+**Done when.** A workflow completes on the hand-built v2 cluster.
+
+### T10.2 Spec
+
+**Goal.** The v2 persistence fields validate.
+
+**Learn first.** Backend schema "v2".
+
+**Build.** `persistence.cassandra` and `persistence.elasticsearch`; exclusive with `postgres`; secrets keys.
+
+**Verify.** `go test -race ./internal/spec/... ./internal/fleet/...`.
+
+**Pitfalls.** `hosts` must be at least `replicationFactor`.
+
+**Done when.** temporalScale's `lab-cass` validates.
+
+### T10.3 Cassandra reads, health and schema
+
+**Goal.** tops reads Cassandra's health and owns its schema.
+
+**Learn first.** gocql dialer: https://pkg.go.dev/github.com/apache/cassandra-gocql-driver/v2
+
+**Build.** `internal/datastore/cassandra` (per host up, quorum, replication, schema version, identity); helper
+`schema` with the Cassandra tool.
+
+**Verify.** `make helper-test` against a single-node Cassandra (re-run no-op).
+
+**Pitfalls.** The driver discovers peers: tunnel every host, not only the contact points.
+
+**Done when.** Health and schema rows pass.
+
+### T10.4 Elasticsearch health and schema
+
+**Goal.** tops reads ES health and owns its template and index.
+
+**Learn first.** Cluster health API: https://www.elastic.co/guide/en/elasticsearch/reference/8.19/cluster-health.html
+
+**Build.** `internal/datastore/elasticsearch`; schema steps setup, create-index, update, in that order.
+
+**Verify.** `make helper-test` against a single-node ES (re-run no-op).
+
+**Pitfalls.** An index created before its template gets dynamic mapping.
+
+**Done when.** Rows pass.
+
+### T10.5 Render, sizing and the identity guard
+
+**Goal.** Temporal on Cassandra + ES rendered, sized and protected.
+
+**Learn first.** TRD "Persistence identity" (v2 rows).
+
+**Build.** Cassandra and ES datastores per role; `maxConns` per role from re-measured constants; identity
+rows of TRD "Persistence identity" marked v2.
+
+**Verify.** T10 acceptance rows "Keyspace change refused", "RF change refused".
+
+**Pitfalls.** Measure Cassandra connection constants; do not reuse the SQL ones.
+
+**Done when.** Rows pass.
+
+### T10.6 Status, audit, e2e, v2.0.0
+
+**Goal.** The v2 cluster is visible and the v1 suite still passes.
+
+**Learn first.** Visibility: https://docs.temporal.io/visibility
+
+**Build.** `status` datastore section; audit ES row (`visibility_persistence_*`); e2e on the v2 lab and the full
+v1 suite on PostgreSQL.
+
+**Verify.** T10 acceptance.
+
+**Pitfalls.** ES `yellow` on a single-node cluster is normal; it is a warning, not a failure.
+
+**Done when.** v2.0.0 published.
+
+### T10 acceptance
+
+| Check                         | Command                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| Bootstrap on Cassandra + ES   | `make lab-reset V2=1 && tops -e lab-cass bootstrap -y && tops -e lab-cass status --json \| jq -e '.temporal.persistenceStore == "cassandra" and .temporal.visibilityStore == "elasticsearch"'` |
+| Datastore health              | `tops -e lab-cass status --json \| jq -e '.datastore.cassandra.quorum and .datastore.elasticsearch.status == "green"'` |
+| One Cassandra node lost       | `docker kill vps-cass-2`; status warns, exit 0; `docker start vps-cass-2`                      |
+| Keyspace change refused       | `keyspace: temporal_b`: `tops -e lab-cass plan --json \| jq -e '.refusals[0].code == "refused.immutable"'` |
+| RF change refused             | `replicationFactor: 1`: same                                                                   |
+| PostgreSQL suite still green  | `make e2e LAB=./lab`                                                                           |
 
 ## CI
 
-`.github/workflows/ci.yml`, on every push and pull request. All jobs required for merge.
+| Job      | Steps                                                                  | Fails when                  |
+| -------- | ---------------------------------------------------------------------- | --------------------------- |
+| lint     | `make lint`; from T1.6 also the generator module                       | any finding (exists)        |
+| test     | `make test`; `make cover` from T1.10                                   | test, race, coverage gate   |
+| vuln     | `make vuln`                                                            | reachable vulnerability (exists) |
+| build    | linux/amd64, linux/arm64, darwin/arm64; 35 MB gate                     | build error, size (exists)  |
+| generate | `make generate` from T1.6                                              | catalog not reproducible    |
+| helper   | `make helper-test` from T2.3                                           | a helper test               |
+| release  | GoReleaser on tags from T1.10; `goreleaser release --snapshot --clean` on PRs | config error         |
 
-| Job       | Steps                                                                                                    | Fails when                                    |
-| --------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| lint      | `gofmt -l .` empty; `golangci-lint run` (errcheck, govet, staticcheck, revive, gosec, errorlint, gocyclo max 10, misspell, bodyclose, noctx, sloglint, contextcheck) | Any finding |
-| test      | `go test -race -coverprofile=coverage.out ./...`; `make cover`                                           | A test, a race, or a coverage gate            |
-| vuln      | `govulncheck ./...`                                                                                      | A reachable vulnerability                     |
-| build     | `GOOS/GOARCH` = linux/amd64, linux/arm64, darwin/arm64; `CGO_ENABLED=0 -trimpath`                        | Build error; any binary > 35 MB               |
-| helper    | `make helper-test` (privileged Docker on `ubuntu-24.04` runners)                                          | A helper test                                 |
-| release dry run | `goreleaser release --snapshot --clean` (on pull requests touching `.goreleaser.yaml`)            | Config error                                  |
-
-Coverage gates exclude `cmd/tops` and `internal/helper/host` (thin wrappers over systemd, apt, iptables and
-exec, covered by helper tests). The lab e2e does not run in CI (PRD Q4); it gates releases.
+Lab e2e does not run in CI (PRD Q4); it gates releases.
 
 ## Release steps
 
-1. `main` green; CHANGELOG has the version's section; docs updated.
-2. `git tag -s vX.Y.Z && git push origin vX.Y.Z`.
-3. `release.yml` runs GoReleaser (archives, `checksums.txt`, SBOMs, completions), attests the archives,
-   and creates a **draft** release.
-4. On the workstation: `make e2e LAB=$LAB TOPS=<binary from the draft>`;
-   `gh release upload vX.Y.Z e2e-report.txt e2e-report.json`.
-5. Publish. `go install github.com/2SSK/tops/cmd/tops@vX.Y.Z` and `tops version` on a clean machine.
-6. In the cluster repo: delete what the milestone lets it delete, in the change that proves it on the lab
-   (temporal-node-scale D3).
-
-No release is published without an attached green e2e report (PRD R9).
+1. `main` green; CHANGELOG `Unreleased` moved under the version; docs updated.
+2. `git tag -s vX.Y.Z && git push origin vX.Y.Z`; `release.yml` builds a draft release with archives,
+   checksums, SBOMs, completions and attestations.
+3. `make e2e LAB=./lab TOPS=<draft binary>`; upload `e2e-report.txt` and `e2e-report.json`.
+4. Publish; `go install …@vX.Y.Z` on a clean machine.
+5. In temporalScale: adopt the release in the same change that proves it on its `lab` environment
+   (rebuild it after the e2e run: `make lab-reset`, `tops -e lab bootstrap`).
 
 ## Definition of done
 
-Per task: test written first and table-driven; golden diffs reviewed; `make lint` and `make test` clean
-(no `//nolint` without a reason on the line); errors wrapped with context, user-facing errors with code,
-what, why, fix; no secret in logs (a test for each new secret field); shape changes reflected in
-[backend-schema.md](backend-schema.md), output changes in [design-brief.md](design-brief.md); user-visible
-behaviour has an e2e test; you can explain every concept the task named.
+Per step: test first, table-driven; golden diffs reviewed; `make check` clean (no `//nolint` without a
+reason); errors wrapped, user errors with code, what, why, fix; context on every I/O call; no secret in logs;
+shapes in backend-schema.md, output in design-brief.md, flows in app-flow.md, updated in the same change;
+user-visible behaviour has an e2e test; CHANGELOG line; you can explain every concept the step named.
 
-Per milestone (release): acceptance table passes on the lab; CI green, coverage gates met, binary < 40 MB;
-e2e report, checksums, SBOM and attestations on the release; README and CHANGELOG updated; the scripts the
-milestone covers deleted in temporal-node-scale (map below).
+Per milestone: acceptance table green on VPSLAB; CI green; e2e report, checksums, SBOM and attestations on the
+release; README and CHANGELOG updated.
 
-## Script deletion map (temporal-node-scale)
+## What temporalScale can delete per release
 
-Agrees with temporal-node-scale PRD M1.
-
-| tops milestone | Deleted in temporal-node-scale                                                                                              |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| T1 (v0.1.0)    | `scripts/status.sh`                                                                                                         |
-| T2 (v0.2.0)    | Nothing (`deploy.sh` still calls `reload-temporal.sh` and `ensure-namespaces.sh`)                                           |
-| T3 (v0.3.0)    | `deploy.sh`, `reload-temporal.sh`, `ensure-namespaces.sh`, `reload-firewall.sh`, `setup-nginx.sh`, `setup-ui.sh`, `install-temporal.sh`, `setup-databases.sh`, `lib.sh`, root `compose.yaml`, `.env.example`, `config/` except `dynamicconfig.yaml`, `lab/temporal.env`, `make push`, `make ui-up/ui-down` |
-| T4 (v0.4.0)    | Nothing left                                                                                                                |
-| T5 (v1.0.0)    | Nothing left; M1 closes                                                                                                     |
-| T6 (v2.0.0)    | Nothing (temporal-role-scale never has scripts besides `lab/lab.sh`)                                                       |
+| tops release | temporalScale                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| P0 (no release) | Nothing; it can write `environments/lab/cluster.yaml` with roles and validate it with a local build |
+| v0.1.0       | Nothing; it gains `base/` and `environments/{lab,staging}/` and `tops -e lab validate` in its lint |
+| v0.3.0       | Nothing: tops builds and reads its `lab` environment on VPSLAB, but cannot change or roll it back yet |
+| v0.4.0       | Its bash lab (`lab/`, tscale 10.78.0.0/24) and every deploy script: `apply`, `rollback` and `drift` cover the change path |
+| v0.5.0       | Nothing: every bash script already went at v0.4.0                                              |
+| v1.0.0       | Nothing left; every runbook names tops commands only                                           |
