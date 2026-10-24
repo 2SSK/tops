@@ -15,8 +15,8 @@ func TestPrintError(t *testing.T) {
 	}{
 		{
 			name: "pain error",
-			err:  errors.New("dial tcp 10.78.0.11:22: connection refused"),
-			want: "✗ dial tcp 10.78.0.11:22: connection refused\n",
+			err:  errors.New("dial tcp 10.80.0.11:22: connection refused"),
+			want: "✗ dial tcp 10.80.0.11:22: connection refused\n",
 		},
 		{
 			name: "user error with why and fix",

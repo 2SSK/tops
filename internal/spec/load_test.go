@@ -21,13 +21,13 @@ func TestParseLab(t *testing.T) {
 		t.Fatalf("Parse: %#v", err)
 	}
 
-	if c.Cluster != "tscale-lab" || c.Shards != 512 || len(c.Nodes) != 2 {
+	if c.Cluster != "tops-e2e" || c.Shards != 512 || len(c.Nodes) != 3 {
 		t.Errorf("got cluster=%q shards=%d nodes=%d", c.Cluster, c.Shards, len(c.Nodes))
 	}
-	if c.Persistence.Postgres == nil || c.Persistence.Postgres.Host != "10.78.0.20" {
+	if c.Persistence.Postgres == nil || c.Persistence.Postgres.Host != "10.80.0.20" {
 		t.Errorf("postgres = %+v", c.Persistence.Postgres)
 	}
-	if c.Nodes[1].Address != "10.78.0.12" {
+	if c.Nodes[1].Address != "10.80.0.12" {
 		t.Errorf("nodes[1].address = %q", c.Nodes[1].Address)
 	}
 }
@@ -40,6 +40,8 @@ func TestParseErrors(t *testing.T) {
 	}{
 		{"unknown key", "cluster: a\nshard: 512\n", "line 2: field shard not found"},
 		{"wrong type", "cluster: a\nshards: many\n", "line 2: cannot unmarshal !!str `many` into int"},
+		{"profile is gone", "cluster: a\nprofile: 2c4g\n", "line 2: field profile not found"},
+		{"ui is gone", "cluster: a\nui:\n version: 2.54.1\n", "line 2: field ui not found"},
 	}
 
 	for _, tt := range tests {

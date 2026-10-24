@@ -31,17 +31,16 @@ func runValidate(t *testing.T, spec string, extra ...string) (string, error) {
 	return out.String(), err
 }
 
-const validSpec = `cluster: tscale-lab
+const validSpec = `cluster: tops-e2e
 temporal: { version: 1.31.3, cli: 1.9.1 }
 shards: 512
-profile: 2c4g
 persistence:
-  postgres: { host: 10.78.0.20, user: temporal }
+  postgres: { host: 10.80.0.20, user: temporal }
 ssh: { user: deploy }
 namespaces: [{ name: default, retention: 72h }]
 nodes:
-  - { name: tscale-01, address: 10.78.0.11 }
-  - { name: tscale-02, address: 10.78.0.12 }
+  - { name: vps-01, address: 10.80.0.11 }
+  - { name: vps-02, address: 10.80.0.12 }
 `
 
 func TestValidateValidSpec(t *testing.T) {
@@ -49,21 +48,21 @@ func TestValidateValidSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate: %#v", err)
 	}
-	if !strings.Contains(out, "is valid: cluster tscale-lab, 2 nodes") {
+	if !strings.Contains(out, "is valid: cluster tops-e2e, 2 nodes") {
 		t.Errorf("output = %q", out)
 	}
 }
 
 func TestValidateInvalidSpec(t *testing.T) {
 	bad := strings.Replace(validSpec, "shards: 512", "shards: 0", 1)
-	bad = strings.Replace(bad, "10.78.0.12", "10.78.0.11", 1)
+	bad = strings.Replace(bad, "10.80.0.12", "10.80.0.11", 1)
 
 	out, err := runValidate(t, bad)
 
 	if got := term.ExitCode(err); got != 4 {
 		t.Errorf("exit code = %d, want 4", got)
 	}
-	want := "shards: 0 must be between 1 and 16384\nnodes[1].address: 10.78.0.11 is also nodes[0]\n"
+	want := "shards: 0 must be between 1 and 16384\nnodes[1].address: 10.80.0.11 is also nodes[0]\n"
 	if out != want {
 		t.Errorf("output = \n%s\nwant\n%s", out, want)
 	}

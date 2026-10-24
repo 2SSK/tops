@@ -12,8 +12,6 @@ func TestDefaultsFillsEmptyFields(t *testing.T) {
 		want any
 	}{
 		{"temporal.logLevel", c.Temporal.LogLevel, "info"},
-		{"secrets", c.Secrets, "secrets.env"},
-		{"dynamicConfig", c.DynamicConfig, "dynamicconfig.yaml"},
 		{"ssh.port", c.SSH.Port, 22},
 		{"ssh.knownHosts", c.SSH.KnownHosts, "~/.ssh/known_hosts"},
 		{"persistence.postgres.port", c.Persistence.Postgres.Port, 5432},

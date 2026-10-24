@@ -1,33 +1,28 @@
-cluster: tscale-lab
+cluster: tops-e2e
 temporal:
   version: 1.31.3
   cli: 1.9.1
   logLevel: info
 shards: 512
-profile: 2c4g
 persistence:
   postgres:
-    host: 10.78.0.20
+    host: 10.80.0.20
     port: 5432
     user: temporal
     tls: false
-secrets: secrets.env
 ssh:
   user: deploy
-  key: lab/keys/lab_key
-  knownHosts: lab/keys/known_hosts
+  key: ~/Code/Projects/building/tops/lab/keys/lab_key
+  knownHosts: ~/Code/Projects/building/tops/lab/keys/known_hosts
 access:
-  clients: [10.78.0.1]
-  monitors: [10.78.0.1]
-  admins: [10.78.0.1]
+  clients: [10.80.0.11]
+  monitors: [10.80.0.12]
+  admins: [10.80.0.13]
   healthchecks: []
 namespaces:
   - { name: default, retention: 72h }
-  - { name: staging, retention: 72h }
-dynamicConfig: config/dynamicconfig.yaml
-ui:
-  node: tscale-01
-  version: 2.54.1
+  - { name: drills, retention: 24h }
 nodes:
-  - { name: tscale-01, address: 10.78.0.11 }
-  - { name: tscale-02, address: 10.78.0.12 }
+  - { name: vps-01, address: 10.80.0.11 }
+  - { name: vps-02, address: 10.80.0.12 }
+  - { name: vps-03, address: 10.80.0.13 }

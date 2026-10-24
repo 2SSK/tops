@@ -39,7 +39,6 @@ func Validate(c *Cluster) []Problem {
 	validatePersistence(&ps, c.Persistence)
 	validateSSH(&ps, c.SSH)
 	validateAccess(&ps, c.Access)
-	validateUI(&ps, c.UI, c.Nodes)
 	validateNamespaces(&ps, c.Namespaces)
 	return ps
 }
@@ -177,29 +176,6 @@ func validateAccess(ps *problems, a Access) {
 	validateSources(ps, "access.monitors", a.Monitors)
 	validateSources(ps, "access.admins", a.Admins)
 	validateSources(ps, "access.healthchecks", a.Healthchecks)
-}
-
-func validateUI(ps *problems, ui *UI, nodes []Node) {
-	if ui == nil {
-		return
-	}
-
-	if !semver.MatchString(ui.Version) {
-		ps.addf("ui.version", "%q must be a version like 2.54.1", ui.Version)
-	}
-
-	if ui.Node != "" && !nodeExists(ui.Node, nodes) {
-		ps.addf("ui.node", "%q is not a name in nodes", ui.Node)
-	}
-}
-
-func nodeExists(name string, nodes []Node) bool {
-	for _, n := range nodes {
-		if n.Name == name {
-			return true
-		}
-	}
-	return false
 }
 
 // minRetention is the shortest retention Temporal accepts for a local namespace.

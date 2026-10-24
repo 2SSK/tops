@@ -3,18 +3,14 @@ package spec
 
 // Cluster is the desired state of one Temporal cluster: the contents of cluster.yaml.
 type Cluster struct {
-	Cluster       string      `yaml:"cluster"`
-	Temporal      Temporal    `yaml:"temporal"`
-	Shards        int         `yaml:"shards"`
-	Profile       string      `yaml:"profile"`
-	Persistence   Persistence `yaml:"persistence"`
-	Secrets       string      `yaml:"secrets"`
-	SSH           SSH         `yaml:"ssh"`
-	Access        Access      `yaml:"access"`
-	Namespaces    []Namespace `yaml:"namespaces"`
-	DynamicConfig string      `yaml:"dynamicConfig"`
-	UI            *UI         `yaml:"ui"`
-	Nodes         []Node      `yaml:"nodes"`
+	Cluster     string      `yaml:"cluster"`
+	Temporal    Temporal    `yaml:"temporal"`
+	Shards      int         `yaml:"shards"`
+	Persistence Persistence `yaml:"persistence"`
+	SSH         SSH         `yaml:"ssh"`
+	Access      Access      `yaml:"access"`
+	Namespaces  []Namespace `yaml:"namespaces"`
+	Nodes       []Node      `yaml:"nodes"`
 }
 
 // Temporal selects the Temporal server and CLI releases.
