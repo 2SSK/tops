@@ -176,6 +176,7 @@ func validateAccess(ps *problems, a Access) {
 	validateSources(ps, "access.clients", a.Clients)
 	validateSources(ps, "access.monitors", a.Monitors)
 	validateSources(ps, "access.admins", a.Admins)
+	validateSources(ps, "access.healthchecks", a.Healthchecks)
 }
 
 func validateUI(ps *problems, ui *UI, nodes []Node) {

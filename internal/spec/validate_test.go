@@ -55,6 +55,8 @@ func TestValidateProblems(t *testing.T) {
 		{"access CIDR", func(c *Cluster) { c.Access.Clients = []string{"10.78.0.0/24"} }, nil},
 		{"bad access source", func(c *Cluster) { c.Access.Monitors = []string{"10.78.0.1", "everyone"} }, []string{`access.monitors[1]: "everyone" must be an IPv4 address or CIDR`}},
 		{"duplicate access source", func(c *Cluster) { c.Access.Admins = []string{"10.78.0.1", "10.78.0.1"} }, []string{`access.admins[1]: 10.78.0.1 is also access.admins[0]`}},
+		{"bad healthchecks source", func(c *Cluster) { c.Access.Healthchecks = []string{"lb"} }, []string{`access.healthchecks[0]: "lb" must be an IPv4 address or CIDR`}},
+		{"duplicate healthchecks source", func(c *Cluster) { c.Access.Healthchecks = []string{"10.80.0.1", "10.80.0.1"} }, []string{`access.healthchecks[1]: 10.80.0.1 is also access.healthchecks[0]`}},
 		{"no ui", func(c *Cluster) { c.UI = nil }, nil},
 		{"ui on unknown node", func(c *Cluster) { c.UI.Node = "tscale-09" }, []string{`ui.node: "tscale-09" is not a name in nodes`}},
 		{"missing ui version", func(c *Cluster) { c.UI.Version = "" }, []string{`ui.version: "" must be a version like 2.54.1`}},
