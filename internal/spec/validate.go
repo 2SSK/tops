@@ -84,7 +84,9 @@ func validateNodes(ps *problems, nodes []Node) {
 		}
 
 		addresses[n.Address] = i
+		validateRoles(ps, path+".roles", n.Roles)
 	}
+	validateRoleCoverage(ps, nodes)
 }
 
 func validateTemporal(ps *problems, t Temporal) {

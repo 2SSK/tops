@@ -64,6 +64,7 @@ type UI struct {
 
 // Node is one host running Temporal.
 type Node struct {
-	Name    string `yaml:"name"`
-	Address string `yaml:"address"`
+	Name    string   `yaml:"name"`
+	Address string   `yaml:"address"`
+	Roles   []string `yaml:"roles"`
 }

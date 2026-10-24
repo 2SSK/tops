@@ -19,5 +19,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `tops validate [-f cluster.yaml]`: checks the spec offline and lists every problem; exits 4 when invalid.
 - `tops validate --json`: one `{"kind": "Validation", ...}` document with every problem's path and message.
 - `tops version` prints the build's version, commit and Go version; `--json` prints a `Version` document.
+- Nodes list the roles they run (`roles: [frontend, history, matching, worker]`); `validate` checks each role and that every role runs on some node.
 
 [Unreleased]: https://github.com/2SSK/tops/commits/main

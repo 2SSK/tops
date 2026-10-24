@@ -39,8 +39,8 @@ persistence:
 ssh: { user: deploy }
 namespaces: [{ name: default, retention: 72h }]
 nodes:
-  - { name: vps-01, address: 10.80.0.11 }
-  - { name: vps-02, address: 10.80.0.12 }
+  - { name: vps-01, address: 10.80.0.11, roles: [frontend, history, matching, worker] }
+  - { name: vps-02, address: 10.80.0.12, roles: [frontend, history, matching, worker] }
 `
 
 func TestValidateValidSpec(t *testing.T) {

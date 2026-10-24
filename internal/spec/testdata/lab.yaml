@@ -23,6 +23,12 @@ namespaces:
   - { name: default, retention: 72h }
   - { name: drills, retention: 24h }
 nodes:
-  - { name: vps-01, address: 10.80.0.11 }
-  - { name: vps-02, address: 10.80.0.12 }
-  - { name: vps-03, address: 10.80.0.13 }
+  - name: vps-01
+    address: 10.80.0.11
+    roles: [frontend, history, matching, worker]
+  - name: vps-02
+    address: 10.80.0.12
+    roles: [frontend, history, matching, worker]
+  - name: vps-03
+    address: 10.80.0.13
+    roles: [frontend, matching]
