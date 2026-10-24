@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Problem is one thing wrong with  a spec, named by its path in cluster.yaml
+// Problem is one thing wrong with a spec, named by its path in cluster.yaml
 type Problem struct {
 	Path    string `json:"path"`
 	Message string `json:"message"`

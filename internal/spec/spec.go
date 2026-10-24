@@ -54,7 +54,7 @@ type Access struct {
 	Healthchecks []string `yaml:"healthchecks"`
 }
 
-// Namespace is a Temporal namespace tops keep in place.
+// Namespace is a Temporal namespace tops keeps in place.
 type Namespace struct {
 	Name      string `yaml:"name"`
 	Retention string `yaml:"retention"`

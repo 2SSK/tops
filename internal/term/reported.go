@@ -1,7 +1,7 @@
 package term
 
 // Reported wraps an error whose details a command has already written as its result,
-// such as the Validation document of an invalid spec. main uses ot only for the exit code.
+// such as the Validation document of an invalid spec. main uses it only for the exit code.
 type Reported struct {
 	Err error
 }

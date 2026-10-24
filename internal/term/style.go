@@ -6,7 +6,7 @@ type Style struct {
 	Color   bool
 }
 
-// Mark returns s as pritned in this style: symbol or word, coloured or plain.
+// Mark returns s as printed in this style: symbol or word, coloured or plain.
 func (st Style) Mark(s Symbol) string {
 	return Paint(Mark(s, st.Unicode), s, st.Color)
 }

@@ -18,7 +18,7 @@ var (
 	asciiMarks   = map[Symbol]string{OK: "ok  ", Warn: "WARN", Fail: "FAIL", Skip: "-   "}
 )
 
-// Mark retruns s as prined: a UTF-8 symbol, or a 4-character word when the locale is not UTF-8.
+// Mark returns s as printed: a UTF-8 symbol, or a 4-character word when the locale is not UTF-8.
 func Mark(s Symbol, unicode bool) string {
 	if unicode {
 		return unicodeMarks[s]

@@ -1,9 +1,9 @@
 BIN :=bin/tops
 
-.PHONY: build test link vuln check clean
+.PHONY: build test lint vuln check clean
 
 build:
-	go build -trimpath -o $(BIN) ./cmd/tops/
+	CGO_ENABLED=0 go build -trimpath -o $(BIN) ./cmd/tops/
 
 test:
 	go test -race -coverprofile=coverage.out ./...
