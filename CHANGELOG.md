@@ -18,3 +18,4 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `--no-color`: plain output on a terminal.
 - `tops validate [-f cluster.yaml]`: checks the spec offline and lists every problem; exits 4 when invalid.
 - `tops validate --json`: one `{"kind": "Validation", ...}` document with every problem's path and message.
+- `tops version` prints the build's version, commit and Go version; `--json` prints a `Version` document.

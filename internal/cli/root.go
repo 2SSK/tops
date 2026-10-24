@@ -2,13 +2,8 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
-
-// Version is the tops version reported by tops version and in every --json document.
-const Version = "dev"
 
 // Options holds the global flags shared by every command
 type Options struct {
@@ -45,17 +40,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.SetHelpCommandGroupID("integrate")
 	root.SetCompletionCommandGroupID("integrate")
 
-	root.AddCommand(&cobra.Command{
-		Use:     "version",
-		Short:   "Print the tops version",
-		GroupID: "integrate",
-		Args:    usageArgs(cobra.NoArgs),
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, err := fmt.Fprintln(cmd.OutOrStdout(), "tops "+Version)
-			return err
-		},
-	})
-
+	root.AddCommand(newVersionCommand(opts))
 	root.AddCommand(newValidateCommand(opts))
 
 	return root
