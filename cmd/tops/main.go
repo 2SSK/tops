@@ -14,7 +14,7 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
-var opts cli.Options
+var opts = cli.Options{Getenv: os.Getenv, Getwd: os.Getwd}
 
 func main() {
 	ctx, stop := signal.NotifyContext(

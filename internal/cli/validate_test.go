@@ -14,21 +14,36 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
-// runValidate writes spec to a temporary cluster.yaml and runs "tops validate -f" on it,
-// followed by any extra arguments.
-func runValidate(t *testing.T, spec string, extra ...string) (string, error) {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "cluster.yaml")
-	if err := os.WriteFile(path, []byte(spec), 0o600); err != nil {
-		t.Fatal(err)
-	}
+// fixture is the fleet root shared wither internal/fleet: environments lab and staging.
+const fixture = "../fleet/testdata/fleet"
 
+// run executes tops with args as if started in dir, with no environment variable set.
+func run(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
 	var out bytes.Buffer
-	cmd := NewRootCommand(&Options{})
+	cmd := NewRootCommand(&Options{
+		Getenv: func(string) string { return "" },
+		Getwd:  func() (string, error) { return dir, nil },
+	})
 	cmd.SetOut(&out)
-	cmd.SetArgs(append([]string{"validate", "-f", path}, extra...))
+	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return out.String(), err
+}
+
+// runValidate writes spec as environments/qa/cluster.yaml of a new fleet and runs
+// "tops -e qa validate" there, followed by any extra arguments.
+func runValidate(t *testing.T, spec string, extra ...string) (string, error) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "environments", "qa")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cluster.yaml"), []byte(spec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return run(t, root, append([]string{"-e", "qa", "validate"}, extra...)...)
 }
 
 const validSpec = `cluster: tops-e2e
@@ -43,13 +58,13 @@ nodes:
   - { name: vps-02, address: 10.80.0.12, roles: [frontend, history, matching, worker] }
 `
 
-func TestValidateValidSpec(t *testing.T) {
-	out, err := runValidate(t, validSpec)
+func TestValidateFixture(t *testing.T) {
+	out, err := run(t, filepath.Join(fixture, "base"), "-e", "lab", "validate")
 	if err != nil {
 		t.Fatalf("validate: %#v", err)
 	}
-	if !strings.Contains(out, "is valid: cluster tops-e2e, 2 nodes") {
-		t.Errorf("output = %q", out)
+	if want := "environments/lab/cluster.yaml is valid: cluster tops-e2e, 3 nodes\n"; out != want {
+		t.Errorf("output = %q, want %q", out, want)
 	}
 }
 
@@ -68,13 +83,51 @@ func TestValidateInvalidSpec(t *testing.T) {
 	}
 }
 
-func TestValidateMissingFile(t *testing.T) {
-	cmd := NewRootCommand(&Options{})
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetArgs([]string{"validate", "-f", filepath.Join(t.TempDir(), "missing.yaml")})
+func TestValidateNeedsEnv(t *testing.T) {
+	_, err := run(t, fixture, "validate")
 
-	if got := term.ExitCode(cmd.Execute()); got != 4 {
-		t.Errorf("exit code = %d, want 4", got)
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "usage.invalid" {
+		t.Fatalf("err = %#v, want a usage.invalid UserError", err)
+	}
+	if ue.Why != "environments: lab, staging" {
+		t.Errorf("why = %q, want the environments listed", ue.Why)
+	}
+}
+
+func TestValidateLoadErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		dir      string
+		args     []string
+		wantCode string
+	}{
+		{"no fleet root", "/", []string{"-e", "lab", "validate"}, "spec.no_root"},
+		{"no fleet root and no -e", "/", []string{"validate"}, "spec.no_root"},
+		{"unknown environment", fixture, []string{"-e", "nope", "validate"}, "spec.no_env"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := run(t, tt.dir, tt.args...)
+
+			var ue *term.UserError
+			if !errors.As(err, &ue) || ue.Code != tt.wantCode {
+				t.Errorf("err = %#v, want a %s UserError", err, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TesetValidateGetwdFails(t *testing.T) {
+	cmd := NewRootCommand(&Options{
+		Getenv: func(string) string { return "" },
+		Getwd:  func() (string, error) { return "", errors.New("getwd: no such file or directory") },
+	})
+	cmd.SetArgs([]string{"-e", "lab", "validate"})
+
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "find the fleet root") {
+		t.Errorf("err = %v", err)
 	}
 }
 

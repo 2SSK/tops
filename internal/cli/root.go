@@ -5,11 +5,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Options holds the global flags shared by every command
+// Options holds the global flags shared by every command, and the process
+// environment, injected so that tests never touch the real one.
 type Options struct {
 	JSON    bool
 	NoColor bool
-	File    string
+	Env     string
+
+	Getenv func(string) string
+	Getwd  func() (string, error)
 }
 
 // NewRootCommand returns the tops root command with all subcommands attached.
@@ -29,7 +33,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.SetFlagErrorFunc(usageError)
 	root.PersistentFlags().BoolVar(&opts.JSON, "json", false, "machine-readable output")
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "plain output")
-	root.PersistentFlags().StringVarP(&opts.File, "file", "f", "cluster.yaml", "spec file")
+	root.PersistentFlags().StringVarP(&opts.Env, "env", "e", "", "environment under environments/")
 
 	root.AddGroup(
 		&cobra.Group{ID: "spec", Title: "Spec:"},
@@ -42,6 +46,14 @@ func NewRootCommand(opts *Options) *cobra.Command {
 
 	root.AddCommand(newVersionCommand(opts))
 	root.AddCommand(newValidateCommand(opts))
+
+	// Cobra adds completion only to a root that has subcommands, so this comes last.
+	root.InitDefaultCompletionCmd()
+	for _, c := range root.Commands() {
+		if c.Name() == "completion" {
+			c.PersistentPreRunE = refuseEnv(opts)
+		}
+	}
 
 	return root
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/2SSK/tops/internal/fleet"
 	"github.com/2SSK/tops/internal/spec"
 	"github.com/2SSK/tops/internal/term"
 )
@@ -13,22 +14,23 @@ import (
 func newValidateCommand(opts *Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "validate",
-		Short:   "Check cluster.yaml without touching any node",
+		Short:   "Check an environment without touching any node",
 		GroupID: "spec",
 		Args:    usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := spec.Load(opts.File)
+			env, err := loadEnv(cmd, opts)
 			if err != nil {
 				return err
 			}
 
+			c := env.Cluster
 			out := cmd.OutOrStdout()
 			problems := spec.Validate(c)
 			if opts.JSON {
-				return writeValidation(out, opts.File, problems)
+				return writeValidation(out, env, problems)
 			}
 			if len(problems) == 0 {
-				_, err := fmt.Fprintf(out, "%s is valid: cluster %s, %d nodes\n", opts.File, c.Cluster, len(c.Nodes))
+				_, err := fmt.Fprintf(out, "%s is valid: cluster %s, %d nodes\n", env.File, c.Cluster, len(c.Nodes))
 				return err
 			}
 
@@ -37,7 +39,7 @@ func newValidateCommand(opts *Options) *cobra.Command {
 					return err
 				}
 			}
-			return invalidSpec(opts.File)
+			return invalidSpec(env)
 		},
 	}
 }
@@ -53,7 +55,7 @@ type validationDocument struct {
 
 // writeValidation writes the Validation document. For an invalid spec it still
 // exits 4, but main must not print a second document, so the error is Reported.
-func writeValidation(w io.Writer, file string, problems []spec.Problem) error {
+func writeValidation(w io.Writer, env *fleet.Env, problems []spec.Problem) error {
 	doc := validationDocument{
 		Kind:        "Validation",
 		TopsVersion: Version,
@@ -69,17 +71,17 @@ func writeValidation(w io.Writer, file string, problems []spec.Problem) error {
 		return err
 	}
 	if !doc.OK {
-		return &term.Reported{Err: invalidSpec(file)}
+		return &term.Reported{Err: invalidSpec(env)}
 	}
 
 	return nil
 }
 
 // invalidSpec is the error for a spec with problems: exit 4, code spec.invalid.
-func invalidSpec(file string) error {
+func invalidSpec(env *fleet.Env) error {
 	return &term.UserError{
 		Code: "spec.invalid",
-		What: file + " is invalid",
-		Fix:  "edit " + file + ", then tops validate",
+		What: env.File + " is invalid",
+		Fix:  "edit " + env.File + ", then tops -e " + env.Name + " validate",
 	}
 }

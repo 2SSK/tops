@@ -16,6 +16,8 @@ func TestUsageErrorsExitFour(t *testing.T) {
 		{"unknown flag", []string{"--bogus"}},
 		{"unknown subcommand flag", []string{"version", "--bogus"}},
 		{"unknown argument", []string{"version", "extra"}},
+		{"-f is gone", []string{"validate", "-f", "cluster.yaml"}},
+		{"completion takes no environment", []string{"-e", "lab", "completion", "zsh"}},
 	}
 
 	for _, tt := range tests {

@@ -6,15 +6,23 @@ import (
 )
 
 func TestGlobalFlags(t *testing.T) {
+	type flags struct {
+		JSON    bool
+		NoColor bool
+		Env     string
+	}
+
 	tests := []struct {
 		name string
 		args []string
-		want Options
+		want flags
 	}{
-		{"no flags", []string{"version"}, Options{File: "cluster.yaml"}},
-		{"json before command", []string{"--json", "version"}, Options{JSON: true, File: "cluster.yaml"}},
-		{"json after command", []string{"version", "--json"}, Options{JSON: true, File: "cluster.yaml"}},
-		{"no-color", []string{"version", "--no-color"}, Options{NoColor: true, File: "cluster.yaml"}},
+		{"no flags", []string{"version"}, flags{}},
+		{"json before command", []string{"--json", "version"}, flags{JSON: true}},
+		{"json after command", []string{"version", "--json"}, flags{JSON: true}},
+		{"no-color", []string{"version", "--no-color"}, flags{NoColor: true}},
+		{"env", []string{"-e", "lab", "version"}, flags{Env: "lab"}},
+		{"env long", []string{"version", "--env", "lab"}, flags{Env: "lab"}},
 	}
 
 	for _, tt := range tests {
@@ -27,7 +35,7 @@ func TestGlobalFlags(t *testing.T) {
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("execute: %v", err)
 			}
-			if opts != tt.want {
+			if got := (flags{opts.JSON, opts.NoColor, opts.Env}); got != tt.want {
 				t.Errorf("options = %+v, want %+v", opts, tt.want)
 			}
 		})

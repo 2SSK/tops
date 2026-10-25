@@ -2,8 +2,6 @@ package spec
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 
 	"go.yaml.in/yaml/v3"
 
@@ -26,24 +24,4 @@ func Parse(file string, data []byte) (*Cluster, error) {
 		}
 	}
 	return &c, nil
-}
-
-// Load reads the spec file at path, decodes it and applies Defaults.
-func Load(path string) (*Cluster, error) {
-	data, err := os.ReadFile(filepath.Clean(path))
-	if err != nil {
-		return nil, &term.UserError{
-			Code: "spec.unreadable",
-			What: "cannot read " + path,
-			Why:  err.Error(),
-			Fix:  "run tops next to cluster.yaml, or pass -f <file>",
-		}
-	}
-
-	c, err := Parse(path, data)
-	if err != nil {
-		return nil, err
-	}
-	Defaults(c)
-	return c, nil
 }

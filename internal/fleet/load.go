@@ -71,14 +71,10 @@ func resolvePath(p, dir, home string) string {
 
 // noEnv is the error for an environment that does not exist under root.
 func noEnv(root, name string) error {
-	why := "no environments found"
-	if envs, err := Environments(root); err == nil && len(envs) > 0 {
-		why = "environments: " + strings.Join(envs, ", ")
-	}
 	return &term.UserError{
 		Code: "spec.no_env",
 		What: fmt.Sprintf("environment %q not found", name),
-		Why:  why,
+		Why:  Available(root),
 		Fix:  "pass -e with one of the environments above",
 	}
 }
@@ -86,4 +82,13 @@ func noEnv(root, name string) error {
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// Available lists the environments under root for an error's why line.
+func Available(root string) string {
+	envs, err := Environments(root)
+	if err != nil || len(envs) == 0 {
+		return "no environments found"
+	}
+	return "environments: " + strings.Join(envs, ", ")
 }
