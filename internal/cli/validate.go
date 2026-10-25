@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -23,14 +24,13 @@ func newValidateCommand(opts *Options) *cobra.Command {
 				return err
 			}
 
-			c := env.Cluster
 			out := cmd.OutOrStdout()
-			problems := spec.Validate(c)
+			problems := spec.Validate(env.Cluster)
 			if opts.JSON {
 				return writeValidation(out, env, problems)
 			}
 			if len(problems) == 0 {
-				_, err := fmt.Fprintf(out, "%s is valid: cluster %s, %d nodes\n", env.File, c.Cluster, len(c.Nodes))
+				_, err := fmt.Fprintln(out, StyleFor(out, *opts).Mark(term.OK), summary(env))
 				return err
 			}
 
@@ -48,6 +48,8 @@ func newValidateCommand(opts *Options) *cobra.Command {
 type validationDocument struct {
 	Kind        string         `json:"kind"`
 	TopsVersion string         `json:"topsVersion"`
+	Env         string         `json:"env"`
+	Cluster     string         `json:"cluster"`
 	OK          bool           `json:"ok"`
 	Errors      []spec.Problem `json:"errors"`
 	Warnings    []spec.Problem `json:"warnings"`
@@ -59,6 +61,8 @@ func writeValidation(w io.Writer, env *fleet.Env, problems []spec.Problem) error
 	doc := validationDocument{
 		Kind:        "Validation",
 		TopsVersion: Version,
+		Env:         env.Name,
+		Cluster:     env.Cluster.Cluster,
 		OK:          len(problems) == 0,
 		Errors:      problems,
 		Warnings:    []spec.Problem{},
@@ -75,6 +79,19 @@ func writeValidation(w io.Writer, env *fleet.Env, problems []spec.Problem) error
 	}
 
 	return nil
+}
+
+// summary is the line for a valid environment: environments/lab is valid: cluster
+// tops-e2e, 3 nodes, 10 roles. Roles count every role on every node.
+func summary(env *fleet.Env) string {
+	c := env.Cluster
+	roles := 0
+
+	for _, n := range c.Nodes {
+		roles += len(n.Roles)
+	}
+
+	return fmt.Sprintf("%s is valid: cluster %s, %d nodes, %d roles", filepath.Dir(env.File), c.Cluster, len(c.Nodes), roles)
 }
 
 // invalidSpec is the error for a spec with problems: exit 4, code spec.invalid.

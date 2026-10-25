@@ -33,3 +33,15 @@ func TestUsageErrorsExitFour(t *testing.T) {
 		})
 	}
 }
+
+// TestCompletionWithoutEnv checks that refuseEnv lets completion run without -e. Cobra
+// binds the script's writer to os.Stdout when NewRootCommand creates the command, so
+// SetOut cannot capture it: the test checks the error only (go test hidesthe output).
+func TestCompletionWithoutEnv(t *testing.T) {
+	cmd := NewRootCommand(&Options{})
+	cmd.SetArgs([]string{"completion", "zsh"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("completion zsh: %v", err)
+	}
+}

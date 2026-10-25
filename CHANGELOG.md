@@ -16,10 +16,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Coloured status marks on terminals; plain output for pipes, `NO_COLOR` and `TERM=dumb`.
 - `--json`: failures print one `{"kind": "Error", ...}` document on stdout.
 - `--no-color`: plain output on a terminal.
-- `tops validate [-f cluster.yaml]`: checks the spec offline and lists every problem; exits 4 when invalid.
 - `tops validate --json`: one `{"kind": "Validation", ...}` document with every problem's path and message.
 - `tops version` prints the build's version, commit and Go version; `--json` prints a `Version` document.
 - Nodes list the roles they run (`roles: [frontend, history, matching, worker]`); `validate` checks each role and that every role runs on some node.
-- `tops -e <env> validate`: finds the fleet root (`TOPS_ROOT`, else the nearest parent with `environments/`) and checks `environments/<env>/cluster.yaml` offline; lists every problem; exits 4 when invalid. There is no default environment.
+- `tops -e <env> validate`: finds the fleet root (`TOPS_ROOT`, else the nearest parent with `environments/`) and checks `environments/<env>/cluster.yaml` offline; lists every problem; exits 4 when invalid. There is no default environment. Success prints ✓ environments/<env> is valid:
+  cluster ..., N nodes, M roles; --json names env and cluster.
 
 [Unreleased]: https://github.com/2SSK/tops/commits/main

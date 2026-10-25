@@ -17,13 +17,18 @@ import (
 // fixture is the fleet root shared wither internal/fleet: environments lab and staging.
 const fixture = "../fleet/testdata/fleet"
 
-// run executes tops with args as if started in dir, with no environment variable set.
+// run executes tops with args as if started in dir, with only LANG=C.UTF-8 set.
 func run(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
 	cmd := NewRootCommand(&Options{
-		Getenv: func(string) string { return "" },
-		Getwd:  func() (string, error) { return dir, nil },
+		Getenv: func(k string) string {
+			if k == "LANG" {
+				return "C.UTF-8"
+			}
+			return ""
+		},
+		Getwd: func() (string, error) { return dir, nil },
 	})
 	cmd.SetOut(&out)
 	cmd.SetArgs(args)
@@ -63,7 +68,7 @@ func TestValidateFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate: %#v", err)
 	}
-	if want := "environments/lab/cluster.yaml is valid: cluster tops-e2e, 3 nodes\n"; out != want {
+	if want := "✓ environments/lab is valid: cluster tops-e2e, 3 nodes, 10 roles\n"; out != want {
 		t.Errorf("output = %q, want %q", out, want)
 	}
 }
@@ -168,5 +173,20 @@ func TestValidateJSON(t *testing.T) {
 				t.Errorf("errors must be a JSON array, never null: %s", out)
 			}
 		})
+	}
+}
+
+func TestValidateJSONNamesTheEnvironment(t *testing.T) {
+	out, err := run(t, fixture, "-e", "lab", "validate", "--json")
+	if err != nil {
+		t.Fatalf("validate: %#v", err)
+	}
+
+	var doc validationDocument
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, out)
+	}
+	if doc.Env != "lab" || doc.Cluster != "tops-e2e" {
+		t.Errorf("env = %q, cluster = %q, want lab and tops-e2e", doc.Env, doc.Cluster)
 	}
 }
