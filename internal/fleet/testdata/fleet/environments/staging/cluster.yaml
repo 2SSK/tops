@@ -1,0 +1,21 @@
+cluster: tops-e2e-staging
+temporal:
+  version: 1.31.3
+  cli: 1.9.1
+shards: 512
+persistence:
+  postgres:
+    host: 10.81.0.20
+    user: temporal
+ssh:
+  user: deploy
+  key: keys/id_ed25519
+namespaces:
+  - { name: default, retention: 72h }
+nodes:
+  - name: stg-01
+    address: 10.81.0.11
+    roles: [frontend, history, matching, worker]
+  - name: stg-02
+    address: 10.81.0.12
+    roles: [frontend, history, matching, worker]

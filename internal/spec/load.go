@@ -10,8 +10,9 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
-// Parse decodes cluster.yaml. Unknown keys are an error with their line number.
-func Parse(data []byte) (*Cluster, error) {
+// Parse decodes cluster spec; file names it in errors. Unknown keys are an error
+// with their line number.
+func Parse(file string, data []byte) (*Cluster, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 
@@ -19,9 +20,9 @@ func Parse(data []byte) (*Cluster, error) {
 	if err := dec.Decode(&c); err != nil {
 		return nil, &term.UserError{
 			Code: "spec.invalid",
-			What: "cluster.yaml cannot be read",
+			What: file + " is invalid",
 			Why:  err.Error(),
-			Fix:  "edit cluster.yaml, then tops validate",
+			Fix:  "edit " + file,
 		}
 	}
 	return &c, nil
@@ -39,7 +40,7 @@ func Load(path string) (*Cluster, error) {
 		}
 	}
 
-	c, err := Parse(data)
+	c, err := Parse(path, data)
 	if err != nil {
 		return nil, err
 	}

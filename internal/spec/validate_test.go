@@ -12,7 +12,7 @@ func labSpec(t *testing.T) *Cluster {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := Parse(data)
+	c, err := Parse("testdata/lab.yaml", data)
 	if err != nil {
 		t.Fatalf("Parse: %#v", err)
 	}

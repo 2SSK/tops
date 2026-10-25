@@ -16,7 +16,7 @@ func TestParseLab(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := Parse(data)
+	c, err := Parse("testdata/lab.yaml", data)
 	if err != nil {
 		t.Fatalf("Parse: %#v", err)
 	}
@@ -46,7 +46,7 @@ func TestParseErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Parse([]byte(tt.yaml))
+			_, err := Parse("cluster.yaml", []byte(tt.yaml))
 
 			var ue *term.UserError
 			if !errors.As(err, &ue) {
