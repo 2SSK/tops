@@ -102,3 +102,42 @@ func TestValidateProblems(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateLines(t *testing.T) {
+	tests := []struct {
+		name     string
+		mutate   func(c *Cluster)
+		wantPath string
+		wantLine int
+	}{
+		{"scalar", func(c *Cluster) { c.Shards = 0 }, "shards", 6},
+		{"flow sequence item", func(c *Cluster) { c.Nodes[2].Roles[1] = "matchng" }, "nodes[2].roles[1]", 34},
+		{"flow mapping value", func(c *Cluster) { c.Namespaces[1].Retention = "30m" }, "namespaces[1].retention", 24},
+		{"missing key: its parent", func(c *Cluster) { c.Persistence.Postgres = nil }, "persistence", 7},
+		{"empty value", func(c *Cluster) { c.SSH.User = "" }, "ssh.user", 14},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := labSpec(t)
+			tt.mutate(c)
+
+			ps := Validate(c)
+			if len(ps) != 1 || ps[0].Path != tt.wantPath || ps[0].Line != tt.wantLine {
+				t.Errorf("Validate = %+v, want one problem at %s line %d", ps, tt.wantPath, tt.wantLine)
+			}
+		})
+	}
+}
+
+func TestValidateWithoutFile(t *testing.T) {
+	ps := Validate(&Cluster{})
+	if len(ps) == 0 {
+		t.Fatal("Validate(empty) = no problems")
+	}
+	for _, p := range ps {
+		if p.Line != 0 {
+			t.Errorf("%s: line %d, want 0 for a spec built in code", p.Path, p.Line)
+		}
+	}
+}

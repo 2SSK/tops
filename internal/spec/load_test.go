@@ -41,6 +41,7 @@ func TestParseErrors(t *testing.T) {
 		{"wrong type", "cluster: a\nshards: many\n", "line 2: cannot unmarshal !!str `many` into int"},
 		{"profile is gone", "cluster: a\nprofile: 2c4g\n", "line 2: field profile not found"},
 		{"ui is gone", "cluster: a\nui:\n version: 2.54.1\n", "line 2: field ui not found"},
+		{"not YAML", "cluster: [\n", "line 1: did not find expected node content"},
 	}
 
 	for _, tt := range tests {

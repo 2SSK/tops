@@ -147,7 +147,7 @@ func TestValidateJSON(t *testing.T) {
 		wantExit int
 	}{
 		{"valid", validSpec, true, []spec.Problem{}, 0},
-		{"invalid", bad, false, []spec.Problem{{Path: "shards", Message: "0 must be between 1 and 16384"}}, 4},
+		{"invalid", bad, false, []spec.Problem{{Path: "shards", Line: 3, Message: "0 must be between 1 and 16384"}}, 4},
 	}
 
 	for _, tt := range tests {

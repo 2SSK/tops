@@ -1,6 +1,8 @@
 // Package spec loads and validates cluster.yaml.
 package spec
 
+import "go.yaml.in/yaml/v3"
+
 // Cluster is the desired state of one Temporal cluster: the contents of cluster.yaml.
 type Cluster struct {
 	Cluster     string      `yaml:"cluster"`
@@ -11,6 +13,7 @@ type Cluster struct {
 	Access      Access      `yaml:"access"`
 	Namespaces  []Namespace `yaml:"namespaces"`
 	Nodes       []Node      `yaml:"nodes"`
+	doc         *yaml.Node
 }
 
 // Temporal selects the Temporal server and CLI releases.

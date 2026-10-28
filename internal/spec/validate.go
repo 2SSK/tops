@@ -9,9 +9,11 @@ import (
 	"time"
 )
 
-// Problem is one thing wrong with a spec, named by its path in cluster.yaml
+// Problem is one thing wrong with a spec, named by its path in file
 type Problem struct {
+	File    string `json:"file,omitempty"`
 	Path    string `json:"path"`
+	Line    int    `json:"line"`
 	Message string `json:"message"`
 }
 
@@ -40,6 +42,13 @@ func Validate(c *Cluster) []Problem {
 	validateSSH(&ps, c.SSH)
 	validateAccess(&ps, c.Access)
 	validateNamespaces(&ps, c.Namespaces)
+
+	if c.doc != nil {
+		for i := range ps {
+			ps[i].Line = lineOf(c.doc, ps[i].Path)
+		}
+	}
+
 	return ps
 }
 
