@@ -14,6 +14,7 @@ type Cluster struct {
 	Namespaces  []Namespace `yaml:"namespaces"`
 	Nodes       []Node      `yaml:"nodes"`
 	doc         *yaml.Node
+	decoded     []Problem
 }
 
 // Temporal selects the Temporal server and CLI releases.

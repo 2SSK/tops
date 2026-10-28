@@ -75,7 +75,7 @@ func TestLoadErrorsNameTheFile(t *testing.T) {
 		wantWhat string
 	}{
 		{"missing file", "", "spec.unreadable", "cannot read environments/qa/cluster.yaml"},
-		{"unknown key", "cluster: qa\nshard: 1\n", "spec.invalid", "environments/qa/cluster.yaml is invalid"},
+		{"not YAML", "cluster: [\n", "spec.invalid", "environments/qa/cluster.yaml is invalid"},
 	}
 
 	for _, tt := range tests {

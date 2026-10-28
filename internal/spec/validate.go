@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Problem is one thing wrong with a spec, named by its path in file
+// Problem is one thing wrong with a spec, named by its path and its line in the file.
 type Problem struct {
 	File    string `json:"file,omitempty"`
 	Path    string `json:"path"`
@@ -49,7 +49,15 @@ func Validate(c *Cluster) []Problem {
 		}
 	}
 
-	return ps
+	return slices.Concat(c.decoded, notDecoded(ps, c.decoded))
+}
+
+// notDecoded drops the problems on a path that did not decode: shards: many is
+// already reported, so shards: 0 must be between 1 and 16384 would only confuse.
+func notDecoded(ps, decoded []Problem) []Problem {
+	return slices.DeleteFunc(ps, func(p Problem) bool {
+		return slices.ContainsFunc(decoded, func(d Problem) bool { return d.Path == p.Path })
+	})
 }
 
 // problems collects Problems in the order they are found.
