@@ -13,7 +13,7 @@ persistence:
     tls: false
 ssh:
   user: deploy
-  key: ~/Code/Projects/building/tops/lab/keys/lab_key
+  key: ~/Code/Projects/building/tops/lab/keys/id_ed25519
   knownHosts: ~/Code/Projects/building/tops/lab/keys/known_hosts
 access:
   clients: [10.80.0.11]
