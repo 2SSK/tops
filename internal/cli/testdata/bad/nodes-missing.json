@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"nodes","line":1,"message":"at least one node is required"}],"warnings":[]}

@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"namespaces[1].retention","line":24,"message":"\"soon\" is not a duration like 72h or 7d"}],"warnings":[]}

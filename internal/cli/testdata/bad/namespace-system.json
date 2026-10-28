@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"namespaces[1].name","line":24,"message":"temporal-system is Temporal's own namespace and cannot be managed"}],"warnings":[]}

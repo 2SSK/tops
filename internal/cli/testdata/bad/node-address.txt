@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:30  nodes[1].address  "10.80.0" is not an IPv4 address

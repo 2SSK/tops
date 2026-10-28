@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:3  temporal.version  1.29.0 is not supported; use 1.30.x or 1.31.x

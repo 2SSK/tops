@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:1  nodes  at least one node is required

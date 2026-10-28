@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:4  temporal.cli  "v1.9" must be a version like 1.9.1

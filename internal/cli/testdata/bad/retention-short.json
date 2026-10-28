@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"namespaces[1].retention","line":24,"message":"30m is below Temporal's minimum of 1h"}],"warnings":[]}

@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"ssh.port","line":15,"message":"70000 must be between 1 and 65535"}],"warnings":[]}

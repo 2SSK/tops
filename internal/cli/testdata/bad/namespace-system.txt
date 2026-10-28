@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:24  namespaces[1].name  temporal-system is Temporal's own namespace and cannot be managed

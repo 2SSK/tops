@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:15  ssh.port  70000 must be between 1 and 65535

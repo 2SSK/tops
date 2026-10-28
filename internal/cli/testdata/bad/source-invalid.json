@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"access.clients[0]","line":18,"message":"\"10.80.0.300\" must be an IPv4 address or CIDR"}],"warnings":[]}

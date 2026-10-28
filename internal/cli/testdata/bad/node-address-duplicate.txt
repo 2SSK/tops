@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:30  nodes[1].address  10.80.0.11 is also nodes[0]

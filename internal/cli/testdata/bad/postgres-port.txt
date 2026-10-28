@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:10  persistence.postgres.port  70000 must be between 1 and 65535

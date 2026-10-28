@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:34  nodes[2].roles  at least one role is required (frontend, history, matching, worker)

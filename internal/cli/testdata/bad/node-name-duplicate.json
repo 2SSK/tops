@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"nodes[1].name","line":29,"message":"vps-01 is also nodes[0]"}],"warnings":[]}

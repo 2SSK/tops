@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:18  access.clients[0]  "10.80.0.300" must be an IPv4 address or CIDR

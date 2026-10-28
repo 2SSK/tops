@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:24  namespaces[1].retention  "soon" is not a duration like 72h or 7d

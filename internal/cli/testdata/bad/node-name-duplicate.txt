@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:29  nodes[1].name  vps-01 is also nodes[0]

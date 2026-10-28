@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"shards","line":6,"message":"want a number, got \"many\""}],"warnings":[]}

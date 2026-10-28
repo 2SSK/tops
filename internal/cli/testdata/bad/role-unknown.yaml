@@ -1,0 +1,34 @@
+cluster: tops-e2e
+temporal:
+  version: 1.31.3
+  cli: 1.9.1
+  logLevel: info
+shards: 512
+persistence:
+  postgres:
+    host: 10.80.0.20
+    port: 5432
+    user: temporal
+    tls: false
+ssh:
+  user: deploy
+  key: ~/Code/Projects/building/tops/lab/keys/lab_key
+  knownHosts: ~/Code/Projects/building/tops/lab/keys/known_hosts
+access:
+  clients: [10.80.0.11]
+  monitors: [10.80.0.12]
+  admins: [10.80.0.13]
+  healthchecks: []
+namespaces:
+  - { name: default, retention: 72h }
+  - { name: drills, retention: 24h }
+nodes:
+  - name: vps-01
+    address: 10.80.0.11
+    roles: [frontend, history, matching, worker]
+  - name: vps-02
+    address: 10.80.0.12
+    roles: [frontend, history, matching, worker]
+  - name: vps-03
+    address: 10.80.0.13
+    roles: [frontend, scheduler]

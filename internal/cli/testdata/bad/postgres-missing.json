@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"persistence","line":7,"message":"postgres is required (v1 supports only postgres)"}],"warnings":[]}

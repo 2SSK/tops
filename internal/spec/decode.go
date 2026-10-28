@@ -15,7 +15,7 @@ var (
 	wrongType    = regexp.MustCompile("^cannot unmarshal !!(\\w+)(?: `(.*)`)? into (\\S+)$")
 )
 
-// decodeProblems tursn every entry of a strict-decode error into a problem.
+// decodeProblems turns every entry of a strict-decode error into a problem.
 func decodeProblems(doc *yaml.Node, te *yaml.TypeError) []Problem {
 	ps := make([]Problem, 0, len(te.Errors))
 	for _, entry := range te.Errors {
@@ -24,7 +24,7 @@ func decodeProblems(doc *yaml.Node, te *yaml.TypeError) []Problem {
 	return ps
 }
 
-// decodeProblem turns "line 2: filed shard not found in tyep spec.Cluster" into
+// decodeProblem turns "line 2: field shard not found in tyep spec.Cluster" into
 // {shard, 2, unknown key}. An entry in another format keeps its text.
 func decodeProblem(doc *yaml.Node, entry string) Problem {
 	m := entryLine.FindStringSubmatch(entry)

@@ -82,7 +82,8 @@ func TestValidateInvalidSpec(t *testing.T) {
 	if got := term.ExitCode(err); got != 4 {
 		t.Errorf("exit code = %d, want 4", got)
 	}
-	want := "shards: 0 must be between 1 and 16384\nnodes[1].address: 10.80.0.11 is also nodes[0]\n"
+	want := "✗ environments/qa/cluster.yaml:3  shards  0 must be between 1 and 16384\n" + "✗ environments/qa/cluster.yaml:10  nodes[1].address  10.80.0.11 is also nodes[0]\n"
+
 	if out != want {
 		t.Errorf("output = \n%s\nwant\n%s", out, want)
 	}
@@ -124,7 +125,7 @@ func TestValidateLoadErrors(t *testing.T) {
 	}
 }
 
-func TesetValidateGetwdFails(t *testing.T) {
+func TestValidateGetwdFails(t *testing.T) {
 	cmd := NewRootCommand(&Options{
 		Getenv: func(string) string { return "" },
 		Getwd:  func() (string, error) { return "", errors.New("getwd: no such file or directory") },

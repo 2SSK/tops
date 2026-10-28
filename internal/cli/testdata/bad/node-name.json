@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"nodes[1].name","line":29,"message":"\"VPS_02\" must match ^[a-z0-9][a-z0-9-]{0,62}$"}],"warnings":[]}

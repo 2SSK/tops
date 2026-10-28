@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"persistence.postgres.host","line":9,"message":"\"db_01\" must be an IPv4 address or a DNS name"}],"warnings":[]}

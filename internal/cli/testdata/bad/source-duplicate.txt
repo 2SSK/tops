@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:20  access.admins[1]  10.80.0.13 is also access.admins[0]

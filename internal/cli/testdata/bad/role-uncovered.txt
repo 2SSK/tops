@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:25  nodes  no node runs worker

@@ -34,7 +34,7 @@ func validateRoles(ps *problems, path string, roles []string) {
 
 // validateRoleCoverage checks that every role runs on at least one node.
 // With no nodes at all, validateNodes has already said no.
-// roleList is Roles as printed in problems: "frontend, history, matching, wroker".
+// roleList is Roles as printed in problems: "frontend, history, matching, worker".
 func validateRoleCoverage(ps *problems, nodes []Node) {
 	if len(nodes) == 0 {
 		return

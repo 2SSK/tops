@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:34  nodes[2].roles[1]  frontend is also nodes[2].roles[0]

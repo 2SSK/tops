@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:3  temporal.version  "latest" must be a version like 1.31.3

@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"nodes[2].roles","line":34,"message":"at least one role is required (frontend, history, matching, worker)"}],"warnings":[]}

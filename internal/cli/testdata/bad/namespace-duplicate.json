@@ -1,0 +1,1 @@
+{"kind":"Validation","topsVersion":"dev","env":"qa","cluster":"tops-e2e","ok":false,"errors":[{"path":"namespaces[1].name","line":24,"message":"default is also namespaces[0]"}],"warnings":[]}

@@ -34,8 +34,9 @@ func newValidateCommand(opts *Options) *cobra.Command {
 				return err
 			}
 
+			mark := StyleFor(out, *opts).Mark(term.Fail)
 			for _, p := range problems {
-				if _, err := fmt.Fprintln(out, p); err != nil {
+				if _, err := fmt.Fprintf(out, "%s %s:%d  %s  %s\n", mark, env.File, p.Line, p.Path, p.Message); err != nil {
 					return err
 				}
 			}

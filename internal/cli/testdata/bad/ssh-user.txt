@@ -1,0 +1,1 @@
+✗ environments/qa/cluster.yaml:13  ssh.user  is required
