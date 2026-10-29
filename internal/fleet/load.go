@@ -13,8 +13,8 @@ import (
 // Env is one environment loaded from the fleet root.
 type Env struct {
 	Name    string
-	Dir     string
-	File    string
+	Dir     string // the environment directory under the fleet root
+	File    string // cluster.yaml, relative to the fleet root, for messages
 	Cluster *spec.Cluster
 }
 

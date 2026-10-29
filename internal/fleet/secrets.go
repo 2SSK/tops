@@ -88,7 +88,7 @@ func invalidLine(file string, n int, why string) error {
 	}
 }
 
-// ReadSecrets reads secrets.env next to clulster.yaml: it must be a regular file with
+// ReadSecrets reads secrets.env next to cluster.yaml: it must be a regular file with
 // mode 0600 owned by the current user, parse, and set every key the spec needs.
 func (e *Env) ReadSecrets() (Secrets, error) {
 	file := filepath.Join(filepath.Dir(e.File), "secrets.env")
@@ -155,6 +155,6 @@ func unreadableSecrets(file string, err error) error {
 		Code: "secrets.invalid",
 		What: "cannot read " + file,
 		Why:  why,
-		Fix:  "created it with mode 0600 and a line TOPS_PG_PASSWORD=<password>",
+		Fix:  "create it with mode 0600 and a line TOPS_PG_PASSWORD=<password>",
 	}
 }

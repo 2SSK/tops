@@ -26,6 +26,7 @@ func newValidateCommand(opts *Options) *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			problems := spec.Validate(env.Cluster)
+			// The keys secrets.env must set depend on the spec, so read it only for a valid one
 			if len(problems) == 0 {
 				if _, err := env.ReadSecrets(); err != nil {
 					return err
