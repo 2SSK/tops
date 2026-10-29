@@ -26,6 +26,11 @@ func newValidateCommand(opts *Options) *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			problems := spec.Validate(env.Cluster)
+			if len(problems) == 0 {
+				if _, err := env.ReadSecrets(); err != nil {
+					return err
+				}
+			}
 			if opts.JSON {
 				return writeValidation(out, env, problems)
 			}

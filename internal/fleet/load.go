@@ -13,6 +13,7 @@ import (
 // Env is one environment loaded from the fleet root.
 type Env struct {
 	Name    string
+	Dir     string
 	File    string
 	Cluster *spec.Cluster
 }
@@ -49,7 +50,7 @@ func Load(root, name string) (*Env, error) {
 	c.SSH.Key = resolvePath(c.SSH.Key, dir, home)
 	c.SSH.KnownHosts = resolvePath(c.SSH.KnownHosts, dir, home)
 
-	return &Env{Name: name, File: file, Cluster: c}, nil
+	return &Env{Name: name, Dir: dir, File: file, Cluster: c}, nil
 }
 
 // resolvePath expands a leading ~ to home and makes a relative path relative to dir.

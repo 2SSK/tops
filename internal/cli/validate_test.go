@@ -48,7 +48,31 @@ func runValidate(t *testing.T, spec string, extra ...string) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, "cluster.yaml"), []byte(spec), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeSecrets(t, dir)
 	return run(t, root, append([]string{"-e", "qa", "validate"}, extra...)...)
+}
+
+// writeSecrets writes a private secrets.env in the environment directory dir. git
+// does not keep 0600, so the fixture has none.
+func writeSecrets(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "secrets.env"), []byte("TOPS_PG_PASSWORD=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fixtureFleet copies the fixture to a new directory and gives lab and staging their
+// secrets.env.
+func fixtureFleet(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS(fixture)); err != nil {
+		t.Fatal(err)
+	}
+	for _, env := range []string{"lab", "staging"} {
+		writeSecrets(t, filepath.Join(root, "environments", env))
+	}
+	return root
 }
 
 const validSpec = `cluster: tops-e2e
@@ -64,12 +88,29 @@ nodes:
 `
 
 func TestValidateFixture(t *testing.T) {
-	out, err := run(t, filepath.Join(fixture, "base"), "-e", "lab", "validate")
+	out, err := run(t, filepath.Join(fixtureFleet(t), "base"), "-e", "lab", "validate")
 	if err != nil {
 		t.Fatalf("validate: %#v", err)
 	}
 	if want := "✓ environments/lab is valid: cluster tops-e2e, 3 nodes, 10 roles\n"; out != want {
 		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+func TestValidateChecksSecrets(t *testing.T) {
+	root := fixtureFleet(t)
+	if err := os.Remove(filepath.Join(root, "environments", "lab", "secrets.env")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := run(t, root, "-e", "lab", "validate")
+
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.What != "cannot read environments/lab/secrets.env" {
+		t.Errorf("err = %#v, want the missing secrets.env named", err)
+	}
+	if got := term.ExitCode(err); got != 4 {
+		t.Errorf("exit code = %d, want 4", got)
 	}
 }
 
@@ -178,7 +219,7 @@ func TestValidateJSON(t *testing.T) {
 }
 
 func TestValidateJSONNamesTheEnvironment(t *testing.T) {
-	out, err := run(t, fixture, "-e", "lab", "validate", "--json")
+	out, err := run(t, filepath.Join(fixtureFleet(t), "base"), "-e", "lab", "validate", "--json")
 	if err != nil {
 		t.Fatalf("validate: %#v", err)
 	}
