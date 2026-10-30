@@ -52,3 +52,23 @@ jobs:
           TARGET: ${{ matrix.target }}
       - name: binary is under 35 MB
         run: test "$(stat -c %s bin/tops)" -lt 36700160
+
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      # Temporal's checkout, its modules and its build cache: a cold run downloads and compiles all of it.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cache
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: generate-${{ runner.os }}-${{ hashFiles('tools/cataloggen/versions.txt', 'tools/cataloggen/go.sum') }}
+      - run: make generate
+      - name: the catalog is up to date and byte-stable
+        run: git diff --exit-code internal/catalog/

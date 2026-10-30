@@ -34,3 +34,6 @@ go.work.sum
 # .vscode/
 AGENTS.md
 /lab/
+
+# Temporal source checkouts for make generate
+.cache/
