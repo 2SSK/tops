@@ -16,4 +16,6 @@ type setting struct {
 	Default     any      `json:"default"`
 	DefaultExpr string   `json:"defaultExpr"`
 	Description string   `json:"description"`
+	Roles       []string `json:"roles"`
+	Candidate   string   `json:"candidate"`
 }

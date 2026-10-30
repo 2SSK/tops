@@ -34,3 +34,17 @@ func TestDuplicates(t *testing.T) {
 		t.Errorf("keys that differ only in case :err = nil")
 	}
 }
+
+func TestRoleOf(t *testing.T) {
+	tests := []struct {
+		pkg, want string
+	}{
+		{"go.temporal.io/server/service/history", "history"},
+	}
+
+	for _, tt := range tests {
+		if got := roleOf(tt.pkg); got != tt.want {
+			t.Errorf("roleOf(%q) = %q, want %q", tt.pkg, got, tt.want)
+		}
+	}
+}

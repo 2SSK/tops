@@ -17,6 +17,7 @@ import (
 const (
 	dynamicconfig = "go.temporal.io/server/common/dynamicconfig"
 	constantsFile = "common/dynamicconfig/constants.go"
+	server        = "go.temporal.io/server/cmd/server"
 )
 
 // constructor is New<Precedence><Type>Setting, optionally WithConstrainedDefault.
@@ -38,14 +39,14 @@ var precedences = map[string]struct {
 	"ChasmTaskType": {"chasmTaskType", []string{"chasmTaskType"}},
 }
 
-// load type-checks the dynamicconfig package of the checkout at src and returns its
-// settings sorted by key.
+// load type-checks the checkout at src and returns its settings sorted by key, each
+// with the roles of the server packages that reference it.
 func load(src string) ([]setting, error) {
 	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedSyntax | packages.NeedTypes | packages.NeedTypesInfo,
 		Dir:  src,
 	}
-	pkgs, err := packages.Load(cfg, "./common/dynamicconfig")
+	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {
 		return nil, err
 	}
@@ -56,17 +57,26 @@ func load(src string) ([]setting, error) {
 	i := slices.IndexFunc(pkgs, func(p *packages.Package) bool {
 		return p.PkgPath == dynamicconfig
 	})
-	if i < 0 {
-		return nil, fmt.Errorf("%s has no package %s", src, dynamicconfig)
+	j := slices.IndexFunc(pkgs, func(p *packages.Package) bool {
+		return p.PkgPath == server
+	})
+	if i < 0 || j < 0 {
+		return nil, fmt.Errorf("%s has no package %s or %s", src, dynamicconfig, server)
 	}
 	byVar, err := declared(pkgs[i])
 	if err != nil {
 		return nil, err
 	}
 
+	// Only what the server binary imports: test harnesses and tools reference settings
+	// too, and would make every one look shared.
+	packages.Visit(pkgs[j:j+1], nil, func(p *packages.Package) {
+		uses(p, byVar)
+	})
+
 	settings := make([]setting, 0, len(byVar))
 	for _, s := range byVar {
-		settings = append(settings, s.setting)
+		settings = append(settings, s.result())
 	}
 	slices.SortFunc(settings, func(a, b setting) int {
 		return strings.Compare(a.Key, b.Key)
@@ -78,6 +88,9 @@ func load(src string) ([]setting, error) {
 // found is a setting being collected, by the variable constants.go assigns it to.
 type found struct {
 	setting
+	roles   map[string]bool // roleOf of every package that references it
+	get     bool            // read once with X.Get(c)()
+	watched bool            // X.Subscribe(c)
 }
 
 // declared reads every New...Setting call in constants.go, by the variable it sets.
@@ -154,6 +167,7 @@ func parse(info *types.Info, call *ast.CallExpr) (*found, bool, error) {
 			DefaultExpr: types.ExprString(call.Args[1]),
 			Description: description,
 		},
+		roles: map[string]bool{},
 	}
 	if m[3] != "" {
 		s.Default = constrainedDefault(info, call.Args[1], s.Type)

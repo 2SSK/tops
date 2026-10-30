@@ -22,7 +22,7 @@ vuln:
 
 check: lint test vuln
 
-# The generator is its own module (D23): Temporal's source never enters top's go.mod.
+# The generator is its own module (D23): Temporal's source never enters tops' go.mod.
 generate:
 	@for v in $(CATALOG_VERSIONS); do	\
 				src=.cache/temporal/v$$v;		\
