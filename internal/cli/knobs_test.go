@@ -19,7 +19,7 @@ func TestKnobsSearch(t *testing.T) {
 	for _, want := range []string{
 		"Temporal 1.31 · 7 settings\n\n",
 		"\n  key ",
-		"\n  history.cacheTTL                           history  unknown  1h       HistoryCacheTTL is TTL of history cache\n",
+		"\n  history.cacheTTL                           history  restart  1h       HistoryCacheTTL is TTL of history cache\n",
 		"\n\nunknown = not classified yet; plan restarts the role for it. details: tops knobs <key> -v\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -37,6 +37,7 @@ func TestKnobsExactKey(t *testing.T) {
 		{"exact key", []string{"knobs", "History.CacheTTL"}, []string{
 			"history.cacheTTL · Temporal 1.31\n\n",
 			"  roles       history\n",
+			"  apply       restart\n",
 			"  default     1h\n",
 			"\n  HistoryCacheTTL is TTL of history cache. Requires service restart to take effect.\n",
 		}},
@@ -44,6 +45,11 @@ func TestKnobsExactKey(t *testing.T) {
 			"  constraints  none\n",
 			"  source       time.Hour\n",
 			"  hint         restart (static, from the source; not a classification)\n",
+			"  evidence     service/history/workflow/cache/cache.go NewHostLevelCache reads HistoryCacheTTL() once into the cache options\n",
+		}},
+		{"hot", []string{"knobs", "frontend.shutdownDrainDuration", "-v"}, []string{
+			"  apply        hot\n",
+			"  lab          pending\n",
 		}},
 	}
 
@@ -85,10 +91,28 @@ func TestKnobsJSON(t *testing.T) {
 	if doc.Kind != "Knobs" || doc.Temporal != "1.31.3" || len(doc.Settings) < 500 {
 		t.Errorf("kind %s, temporal %s, %d settings", doc.Kind, doc.Temporal, len(doc.Settings))
 	}
+	applies := map[string]string{}
 	for _, k := range doc.Settings {
-		if k.Apply != "unknown" {
-			t.Errorf("%s: apply = %q, want unknown until it is classified", k.Key, k.Apply)
+		applies[k.Key] = k.Apply
+	}
+	for key, want := range map[string]string{
+		"history.cacheTTL":               "restart",
+		"frontend.shutdownDrainDuration": "hot",
+		"history.eventsCacheTTL":         "unknown",
+	} {
+		if applies[key] != want {
+			t.Errorf("%s: apply = %q, want %q", key, applies[key], want)
 		}
+	}
+}
+
+func TestKnobsNoteOnlyForUnknown(t *testing.T) {
+	out, err := run(t, t.TempDir(), "knobs", "shutdownDrainDuration")
+	if err != nil {
+		t.Fatalf("knobs: %#v", err)
+	}
+	if strings.Contains(out, "unknown =") {
+		t.Errorf("every match is classified, but the output explains unknown:\n%s", out)
 	}
 }
 

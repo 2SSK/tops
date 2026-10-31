@@ -1,6 +1,6 @@
 # How a change to each key reaches a running server: hot (on the next use) or restart.
 # Hand-made from Temporal v1.31.3 (TRD "Classification"). A key with no entry is unknown,
-# and plan restarts its roles.
+# and plan restarts its roles. hot entries stay lab: pending until the lab check (T4.3).
 
 frontend.shutdownDrainDuration:
   apply: hot

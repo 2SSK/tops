@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -12,11 +13,10 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
-// knob is a catalog setting with its apply class. No key is classified yet, so every
-// one is unknown, and plan restarts the role for it.
+// knob is a catalog setting with its class: apply, and the evidence for it.
 type knob struct {
 	catalog.Setting
-	Apply string `json:"apply"`
+	catalog.Class
 }
 
 // knobsDocument is the --json result of tops knobs.
@@ -51,7 +51,7 @@ func newKnobsCommand(opts *Options) *cobra.Command {
 			}
 			knobs := make([]knob, 0, len(matches))
 			for _, s := range matches {
-				knobs = append(knobs, knob{Setting: s, Apply: "unknown"})
+				knobs = append(knobs, knob{Setting: s, Class: c.Class(s.Key)})
 			}
 			out := cmd.OutOrStdout()
 			if opts.JSON {
@@ -70,7 +70,7 @@ func newKnobsCommand(opts *Options) *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "show the default's source and the static hint")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "show the source, the static hint and the evidence")
 	return cmd
 }
 
@@ -80,7 +80,14 @@ func knobsTable(knobs []knob, c *catalog.Catalog) string {
 	for _, k := range knobs {
 		rows = append(rows, []string{k.Key, strings.Join(k.Roles, ","), k.Apply, defaultOf(k.Setting), firstSentence(k.Description)})
 	}
-	return fmt.Sprintf("Temporal %s · %d settings\n\n%s\n%s\n", minorOf(c), len(knobs), table(rows), unknownNote)
+
+	note := ""
+	if slices.ContainsFunc(knobs, func(k knob) bool {
+		return k.Apply == "unknown"
+	}) {
+		note = "\n" + unknownNote + "\n"
+	}
+	return fmt.Sprintf("Temporal %s · %d settings\n\n%s%s", minorOf(c), len(knobs), table(rows), note)
 }
 
 // knobPage is everything about one setting.
@@ -103,6 +110,12 @@ func knobPage(k knob, c *catalog.Catalog, verbose bool) string {
 			[]string{"hint", k.Candidate + " (static, from the source; not a classification)"},
 			[]string{"from", c.GeneratedFrom},
 		)
+		if k.Evidence != "" {
+			rows = append(rows, []string{"evidence", k.Evidence})
+		}
+		if k.Lab != "" {
+			rows = append(rows, []string{"lab", k.Lab})
+		}
 	}
 	return fmt.Sprintf("%s · Temporal %s\n\n%s\n%s\n", k.Key, minorOf(c), table(rows), indent(k.Description))
 }
@@ -127,7 +140,7 @@ func table(rows [][]string) string {
 }
 
 // defaultOf is a default as text: its value, a list for a constrained default, or
-// its Go source when it is not a c constant.
+// its Go source when it is not a Go constant.
 func defaultOf(s catalog.Setting) string {
 
 	switch v := s.Default.(type) {
@@ -155,7 +168,7 @@ func firstSentence(description string) string {
 
 // indent indents every line of s by two spaces.
 func indent(s string) string {
-	return "  " + strings.ReplaceAll(s, "\n", "\n ") + "\n"
+	return "  " + strings.ReplaceAll(s, "\n", "\n  ") + "\n"
 }
 
 // minorOf is the catalog's Temporal minor: 1.31 for 1.31.3.
