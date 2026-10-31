@@ -46,6 +46,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 
 	root.AddCommand(newVersionCommand(opts))
 	root.AddCommand(newValidateCommand(opts))
+	root.AddCommand(newKnobsCommand(opts))
 
 	// Cobra adds completion only to a root that has subcommands, so this comes last.
 	root.InitDefaultCompletionCmd()
