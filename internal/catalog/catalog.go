@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-//go:embed catalog-*.json
+//go:embed catalog-*.json class-*.yaml
 var files embed.FS
 
 // Catalog is one catalog-<minor>.json, written by tools/cataloggen.
@@ -21,6 +21,8 @@ type Catalog struct {
 	Temporal      string    `json:"temporal"`
 	GeneratedFrom string    `json:"generatedFrom"`
 	Settings      []Setting `json:"settings"`
+
+	classes map[string]Class // from class-<minor>.yaml
 }
 
 // Setting is one dynamic-config key (backend schema "Settings catalog").
@@ -47,7 +49,7 @@ func Minors() []string {
 	return minors
 }
 
-// Load reads the catalog of minor, such as 1.31.
+// Load reads the catalog of minor, such as 1.31, and its classes.
 func Load(minor string) (*Catalog, error) {
 	data, err := files.ReadFile("catalog-" + minor + ".json")
 	if err != nil {
@@ -60,6 +62,16 @@ func Load(minor string) (*Catalog, error) {
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("catalog-%s.json: %w", minor, err)
 	}
+
+	file := "class-" + minor + ".yaml"
+	data, err = files.ReadFile(file)
+	if err != nil {
+		return nil, fmt.Errorf("no class file for Temporal %s", minor)
+	}
+	if c.classes, err = parseClasses(file, data, &c); err != nil {
+		return nil, err
+	}
+
 	return &c, nil
 }
 

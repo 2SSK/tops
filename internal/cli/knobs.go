@@ -6,9 +6,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/2SSK/tops/internal/catalog"
 	"github.com/2SSK/tops/internal/term"
-	"github.com/spf13/cobra"
 )
 
 // knob is a catalog setting with its apply class. No key is classified yet, so every

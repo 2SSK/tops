@@ -1,0 +1,48 @@
+# How a change to each key reaches a running server: hot (on the next use) or restart.
+# Hand-made from Temporal v1.31.3 (TRD "Classification"). A key with no entry is unknown,
+# and plan restarts its roles.
+
+frontend.shutdownDrainDuration:
+  apply: hot
+  evidence: "service/frontend/service.go Service.Stop calls ShutdownDrainDuration() when the frontend stops"
+  lab: pending
+
+frontend.shutdownFailHealthCheckDuration:
+  apply: hot
+  evidence: "service/frontend/service.go Service.Stop calls ShutdownFailHealthCheckDuration() when the frontend stops"
+  lab: pending
+
+history.cacheSizeBasedLimit:
+  apply: restart
+  evidence: "service/history/configs/config.go NewConfig reads it once with .Get(dc)() into a bool; workflow/cache/cache.go NewHostLevelCache branches on it"
+
+history.cacheTTL:
+  apply: restart
+  evidence: "service/history/workflow/cache/cache.go NewHostLevelCache reads HistoryCacheTTL() once into the cache options"
+
+history.enableHostLevelEventsCache:
+  apply: restart
+  evidence: "service/history/shard/context_impl.go newContext reads it when a shard is created; shards already loaded keep their events cache"
+
+history.eventsHostLevelCacheMaxSizeBytes:
+  apply: restart
+  evidence: "service/history/events/cache.go NewHostLevelEventsCache reads it once as the cache's max size"
+
+history.hostLevelCacheMaxSizeBytes:
+  apply: restart
+  evidence: "service/history/workflow/cache/cache.go NewHostLevelCache reads it once as the cache's max size"
+
+history.shutdownDrainDuration:
+  apply: hot
+  evidence: "service/history/service.go Service.Stop calls ShutdownDrainDuration() when history stops"
+  lab: pending
+
+limit.maxIDLength:
+  apply: hot
+  evidence: "service/frontend/workflow_handler.go calls MaxIDLengthLimit() on every request; history's api.NewCommandAttrValidator reads it once, but RespondWorkflowTaskCompleted builds a new one per request"
+  lab: pending
+
+matching.shutdownDrainDuration:
+  apply: hot
+  evidence: "service/matching/service.go Service.Stop calls ShutdownDrainDuration() when matching stops"
+  lab: pending
