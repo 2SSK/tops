@@ -80,11 +80,8 @@ func knobsTable(knobs []knob, c *catalog.Catalog) string {
 	for _, k := range knobs {
 		rows = append(rows, []string{k.Key, strings.Join(k.Roles, ","), k.Apply, defaultOf(k.Setting), firstSentence(k.Description)})
 	}
-
 	note := ""
-	if slices.ContainsFunc(knobs, func(k knob) bool {
-		return k.Apply == "unknown"
-	}) {
+	if slices.ContainsFunc(knobs, func(k knob) bool { return k.Apply == "unknown" }) {
 		note = "\n" + unknownNote + "\n"
 	}
 	return fmt.Sprintf("Temporal %s · %d settings\n\n%s%s", minorOf(c), len(knobs), table(rows), note)
