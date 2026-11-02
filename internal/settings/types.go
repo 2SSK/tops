@@ -79,7 +79,7 @@ func want(s catalog.Setting) string {
 	}
 }
 
-// got names what the files has: a list, a mapping, or the value itself.
+// got names what the file has: a list, a mapping, or the value itself.
 func got(n *yaml.Node) string {
 	switch n.Kind {
 	case yaml.SequenceNode:
