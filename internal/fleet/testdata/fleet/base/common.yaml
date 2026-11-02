@@ -1,0 +1,3 @@
+# Settings for every role of every environment.
+limit.maxIDLength:
+  - value: 1000

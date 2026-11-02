@@ -19,8 +19,8 @@ type Layers struct {
 	Overrides File            // environments/<env>/overrides.yaml
 }
 
-// Merge is the dynamic config of role: each key role redas, from the last layer that sets it.
-// A key's list is replaced, never merged: merging constraint lists would maek values nobody wrote.
+// Merge is the dynamic config of role: each key role reads, from the last layer that sets it.
+// A key's list is replaced, never merged: merging constraint lists would make values nobody wrote.
 func (l Layers) Merge(role string, c *catalog.Catalog) File {
 	merged := File{}
 	for _, f := range []File{l.Common, l.Roles[role], l.Overrides} {
@@ -55,7 +55,7 @@ func (l Layers) Check(c *catalog.Catalog) (errs, warnings []spec.Problem) {
 	return errs, warnings
 }
 
-// reads reports whether role reads setting s : its own code does, or code every role shares.
+// reads reports whether role reads setting s: its own code does, or code every role shares.
 func reads(s catalog.Setting, role string) bool {
 	return slices.Contains(s.Roles, role) || slices.Contains(s.Roles, "shared")
 }

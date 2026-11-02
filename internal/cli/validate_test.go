@@ -14,7 +14,7 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
-// fixture is the fleet root shared wither internal/fleet: environments lab and staging.
+// fixture is the fleet root shared with internal/fleet: environments lab and staging.
 const fixture = "../fleet/testdata/fleet"
 
 // run executes tops with args as if started in dir, with only LANG=C.UTF-8 set.
@@ -128,6 +128,10 @@ func TestValidateInvalidSpec(t *testing.T) {
 	if out != want {
 		t.Errorf("output = \n%s\nwant\n%s", out, want)
 	}
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.What != "environments/qa is invalid: 2 errors, 0 warnings" {
+		t.Errorf("err = %#v, want the errors and warnings counted", err)
+	}
 }
 
 func TestValidateNeedsEnv(t *testing.T) {
@@ -230,5 +234,80 @@ func TestValidateJSONNamesTheEnvironment(t *testing.T) {
 	}
 	if doc.Env != "lab" || doc.Cluster != "tops-e2e" {
 		t.Errorf("env = %q, cluster = %q, want lab and tops-e2e", doc.Env, doc.Cluster)
+	}
+}
+
+func TestValidateSettings(t *testing.T) {
+	tests := []struct {
+		name, file, data string
+		want             string
+		wantExit         int
+	}{
+		{
+			"error", "environments/lab/overrides.yaml", "history.cachettl:\n  - value: 15 minutes\n",
+			"✗ environments/lab/overrides.yaml:2  history.cachettl[0].value  want a duration like 30s, 15m or 2d, got \"15 minutes\"\n",
+			4,
+		},
+		{
+			"error of the layers", "base/history.yaml", "frontend.namespaceRPS:\n  - value: 400\n",
+			"✗ base/history.yaml:1  frontend.namespaceRPS  history does not read it (read by frontend); move it to the file of a role that does\n",
+			4,
+		},
+		{
+			"warning only", "base/frontend.yaml", "limit.maxIDLength:\n  - value: 500\n",
+			"! base/frontend.yaml:1  limit.maxIDLength  also set in base/common.yaml line 2; this file wins for frontend\n" +
+				"✓ environments/lab is valid: cluster tops-e2e, 3 nodes, 10 roles\n",
+			0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := fixtureFleet(t)
+			if err := os.WriteFile(filepath.Join(root, tt.file), []byte(tt.data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			out, err := run(t, root, "-e", "lab", "validate")
+
+			if got := term.ExitCode(err); got != tt.wantExit {
+				t.Errorf("exit code = %d, want %d", got, tt.wantExit)
+			}
+			if out != tt.want {
+				t.Errorf("output =\n%s\nwant\n%s", out, tt.want)
+			}
+			var ue *term.UserError
+			if tt.wantExit == 4 && (!errors.As(err, &ue) || ue.What != "environments/lab is invalid: 1 error, 0 warnings") {
+				t.Errorf("err = %#v, want 1 error counted", err)
+			}
+		})
+	}
+}
+
+func TestValidateJSONWarnings(t *testing.T) {
+	root := fixtureFleet(t)
+	if err := os.WriteFile(filepath.Join(root, "base", "frontend.yaml"), []byte("limit.maxIDLength:\n  - value: 500\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := run(t, root, "-e", "lab", "validate", "--json")
+	if err != nil {
+		t.Fatalf("validate: %#v", err)
+	}
+
+	var doc validationDocument
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, out)
+	}
+	want := []spec.Problem{{File: "base/frontend.yaml", Path: "limit.maxIDLength", Line: 1, Message: "also set in base/common.yaml line 2; this file wins for frontend"}}
+	if !doc.OK || !slices.Equal(doc.Warnings, want) {
+		t.Errorf("document = %+v, want ok with the warning", doc)
+	}
+}
+
+func TestValidateNoCatalog(t *testing.T) {
+	// 1.30 is a supported release, but its catalog comes in T7.1.
+	_, err := runValidate(t, strings.Replace(validSpec, "1.31.3", "1.30.4", 1))
+	if err == nil || err.Error() != "no settings catalog for Temporal 1.30" {
+		t.Errorf("err = %v, want the missing catalog named", err)
 	}
 }
