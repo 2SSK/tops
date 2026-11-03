@@ -18,7 +18,7 @@ type File map[string]Entry
 
 // Entry is one key of one file: the values written for it, and where.
 type Entry struct {
-	Key    string
+	Key    string // the catalog's spelling
 	File   string
 	Line   int
 	Values []Value
@@ -28,7 +28,7 @@ type Entry struct {
 // (none for the fallback).
 type Value struct {
 	Value       any            `yaml:"value" json:"value"`
-	Constraints map[string]any `yaml:"constraints,omitempty"`
+	Constraints map[string]any `yaml:"constraints,omitempty" json:"constraints,omitempty"`
 }
 
 // Parse reads the dynamic-config file named file. YAML that does not parse is an error;
@@ -148,7 +148,7 @@ func (p *parser) fields(path string, item *yaml.Node) (value, constraints *yaml.
 	return value, constraints, ok
 }
 
-// constraints checks that every constraints name is one the settings's precedence allows.
+// constraints checks that every constraint name is one the setting's precedence allows.
 // Temporal compares the names ignoring case.
 func (p *parser) constraints(path string, s catalog.Setting, m *yaml.Node) bool {
 	if m.Kind != yaml.MappingNode {

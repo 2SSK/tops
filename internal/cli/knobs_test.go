@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,12 +118,85 @@ func TestKnobsNoteOnlyForUnknown(t *testing.T) {
 	}
 }
 
-func TestKnobsRefusesEnv(t *testing.T) {
-	_, err := run(t, t.TempDir(), "-e", "lab", "knobs")
+func TestKnobsLayers(t *testing.T) {
+	tests := []struct {
+		key   string
+		wants []string
+	}{
+		{"frontend.namespaceRPS", []string{
+			"layers in lab\n\n",
+			"  default                          2400\n",
+			"  base/common.yaml                 -\n",
+			"  base/frontend.yaml               -\n",
+			"  environments/lab/overrides.yaml  400 (namespace=drills), 2400\n",
+			"  frontend runs                    400 (namespace=drills), 2400  from environments/lab/overrides.yaml\n",
+		}},
+		{"limit.maxIDLength", []string{
+			"  base/common.yaml                 1000\n",
+			"  frontend runs                    1000  from base/common.yaml\n",
+			"  worker runs                      1000  from base/common.yaml\n",
+		}},
+		{"history.eventsCacheTTL", []string{
+			"  history runs                     1h  from default\n",
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			out, err := run(t, fixtureFleet(t), "-e", "lab", "knobs", tt.key)
+			if err != nil {
+				t.Fatalf("knobs: %#v", err)
+			}
+			for _, want := range tt.wants {
+				if !strings.Contains(out, want) {
+					t.Errorf("output has no %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+func TestKnobsLayersJSON(t *testing.T) {
+	out, err := run(t, fixtureFleet(t), "-e", "lab", "knobs", "frontend.namespaceRPS", "--json")
+	if err != nil {
+		t.Fatalf("knobs: %#v", err)
+	}
+
+	var doc knobsDocument
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v", err)
+	}
+	if len(doc.Settings) != 1 || doc.Settings[0].Layers == nil {
+		t.Fatalf("settings = %+v, want one with layers", doc.Settings)
+	}
+	if got := doc.Settings[0].Layers.Effective["frontend"].File; got != "environments/lab/overrides.yaml" {
+		t.Errorf("frontend runs the list from %q, want the overrides", got)
+	}
+	if !strings.Contains(out, `{"value":400,"constraints":{"namespace":"drills"}}`) {
+		t.Errorf("constraints must be in lower case, like value: %s", out)
+	}
+}
+
+func TestKnobsNoLayersWithoutEnv(t *testing.T) {
+	out, err := run(t, t.TempDir(), "knobs", "frontend.namespaceRPS", "--json")
+	if err != nil {
+		t.Fatalf("knobs: %#v", err)
+	}
+	if strings.Contains(out, `"layers"`) {
+		t.Errorf("without -e there is no environment, so no layers: %s", out)
+	}
+}
+
+func TestKnobsInvalidSettings(t *testing.T) {
+	root := fixtureFleet(t)
+	if err := os.WriteFile(filepath.Join(root, "base", "history.yaml"), []byte("frontend.namespaceRPS:\n  - value: 400\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := run(t, root, "-e", "lab", "knobs", "frontend.namespaceRPS")
 
 	var ue *term.UserError
-	if !errors.As(err, &ue) || ue.Code != "usage.invalid" {
-		t.Errorf("err = %#v, want a usage.invalid UserError", err)
+	if !errors.As(err, &ue) || ue.Code != "spec.invalid" || ue.What != "environments/lab has invalid settings" {
+		t.Errorf("err = %#v, want spec.invalid naming the environment", err)
 	}
 }
 

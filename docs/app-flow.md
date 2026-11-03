@@ -123,8 +123,9 @@ Temporal <minor> · <n> settings
 unknown = not classified yet; plan restarts the role for it. details: tops knobs <key> -v
 ```
 
-Exact key with `-e`: a `layers` block: `default <v> · base/common.yaml - · base/history.yaml 15m ·
-overrides.yaml - · effective 15m`.
+Exact key with `-e`: a `layers in <env>` table: `default`, `base/common.yaml`, `base/<role>.yaml` for each role
+that reads the key, `environments/<env>/overrides.yaml` (`-` where a file does not set it), then `<role> runs
+<values>  from <file>` per role. Invalid settings files: `spec.invalid`, see `validate`.
 
 `--json`: `Knobs`.
 

@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -10,13 +12,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/2SSK/tops/internal/catalog"
+	"github.com/2SSK/tops/internal/settings"
 	"github.com/2SSK/tops/internal/term"
 )
 
-// knob is a catalog setting with its class: apply, and the evidence for it.
+// knob is a catalog setting with its class: apply, and the evidence for it. With -e it
+// also has the environment's layers.
 type knob struct {
 	catalog.Setting
 	catalog.Class
+	Layers *settings.Trace `json:"layers,omitempty"`
 }
 
 // knobsDocument is the --json result of tops knobs.
@@ -34,14 +39,12 @@ func newKnobsCommand(opts *Options) *cobra.Command {
 		Short:   "Search the dynamic-config settings of Temporal",
 		GroupID: "spec",
 		Args:    usageArgs(cobra.MaximumNArgs(1)),
-		PreRunE: refuseEnv(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			minors := catalog.Minors()
-			c, err := catalog.Load(minors[len(minors)-1])
+			c, layers, err := knobsCatalog(cmd, opts)
 			if err != nil {
 				return err
 			}
-			text := strings.Join(args, "")
+			text := strings.Join(args, " ")
 
 			// An exact key is that one setting, even when other keys contain it.
 			matches := c.Search(text)
@@ -51,7 +54,12 @@ func newKnobsCommand(opts *Options) *cobra.Command {
 			}
 			knobs := make([]knob, 0, len(matches))
 			for _, s := range matches {
-				knobs = append(knobs, knob{Setting: s, Class: c.Class(s.Key)})
+				k := knob{Setting: s, Class: c.Class(s.Key)}
+				if layers != nil {
+					t := layers.Trace(s, c)
+					k.Layers = &t
+				}
+				knobs = append(knobs, k)
 			}
 			out := cmd.OutOrStdout()
 			if opts.JSON {
@@ -62,7 +70,7 @@ func newKnobsCommand(opts *Options) *cobra.Command {
 			case len(knobs) == 0:
 				page = noMatch(text, c.Closest(text))
 			case exact:
-				page = knobPage(knobs[0], c, verbose)
+				page = knobPage(knobs[0], c, verbose, opts.Env)
 			default:
 				page = knobsTable(knobs, c)
 			}
@@ -72,6 +80,37 @@ func newKnobsCommand(opts *Options) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "show the source, the static hint and the evidence")
 	return cmd
+}
+
+// knobsCatalog is the catalog knobs reads, and with -e the environment's layers: the
+// catalog of the spec's minor. Without -e it is the newest supported minor, and no layers.
+func knobsCatalog(cmd *cobra.Command, opts *Options) (*catalog.Catalog, *settings.Layers, error) {
+	if opts.Env == "" {
+		minors := catalog.Minors()
+		c, err := catalog.Load(minors[len(minors)-1])
+		return c, nil, err
+	}
+	env, err := loadEnv(cmd, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	c, err := env.Catalog()
+	if err != nil {
+		return nil, nil, err
+	}
+	layers, problems, err := env.Settings(c)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Layers with problems would show a value other than the one tops applies.
+	if errs, _ := layers.Check(c); len(problems)+len(errs) > 0 {
+		return nil, nil, &term.UserError{
+			Code: "spec.invalid",
+			What: filepath.Dir(env.File) + " has invalid settings",
+			Fix:  "tops -e " + env.Name + " validate shows each problem",
+		}
+	}
+	return c, &layers, nil
 }
 
 // knobsTable is the list of matching settings, one line each.
@@ -87,8 +126,8 @@ func knobsTable(knobs []knob, c *catalog.Catalog) string {
 	return fmt.Sprintf("Temporal %s · %d settings\n\n%s%s", minorOf(c), len(knobs), table(rows), note)
 }
 
-// knobPage is everything about one setting.
-func knobPage(k knob, c *catalog.Catalog, verbose bool) string {
+// knobPage is everything about one setting, and with -e its layers in env.
+func knobPage(k knob, c *catalog.Catalog, verbose bool, env string) string {
 	rows := [][]string{
 		{"type", k.Type},
 		{"precedence", k.Precedence},
@@ -114,7 +153,52 @@ func knobPage(k knob, c *catalog.Catalog, verbose bool) string {
 			rows = append(rows, []string{"lab", k.Lab})
 		}
 	}
-	return fmt.Sprintf("%s · Temporal %s\n\n%s\n%s\n", k.Key, minorOf(c), table(rows), indent(k.Description))
+	page := fmt.Sprintf("%s · Temporal %s\n\n%s\n%s\n", k.Key, minorOf(c), table(rows), indent(k.Description))
+	if k.Layers != nil {
+		page += layersTable(k, env)
+	}
+	return page
+}
+
+// layersTable is where k gets its value in env: the default, each file, then what each
+// role that reads it runs, and from which file.
+func layersTable(k knob, env string) string {
+	t := k.Layers
+	readers := settings.Readers(k.Setting)
+	rows := [][]string{{"default", defaultOf(k.Setting)}, {"base/common.yaml", values(t.Common)}}
+	for _, role := range readers {
+		rows = append(rows, []string{"base/" + role + ".yaml", values(t.Roles[role])})
+	}
+	rows = append(rows, []string{filepath.Join("environments", env, "overrides.yaml"), values(t.Override)})
+	for _, role := range readers {
+		e := t.Effective[role]
+		value := values(e.Values)
+		if e.File == "default" {
+			value = defaultOf(k.Setting)
+		}
+		rows = append(rows, []string{role + " runs", value + "  from " + e.File})
+	}
+	return "layers in " + env + "\n\n" + table(rows) + "\n"
+}
+
+// values is a key's list as text, - when the file does not set it:
+// 400 (namespace=drills), 2400.
+func values(list []settings.Value) string {
+	if len(list) == 0 {
+		return "-"
+	}
+	items := make([]string, len(list))
+	for i, v := range list {
+		items[i] = fmt.Sprint(v.Value)
+		if len(v.Constraints) > 0 {
+			var cs []string
+			for _, name := range slices.Sorted(maps.Keys(v.Constraints)) {
+				cs = append(cs, fmt.Sprintf("%s=%v", name, v.Constraints[name]))
+			}
+			items[i] += " (" + strings.Join(cs, ", ") + ")"
+		}
+	}
+	return strings.Join(items, ", ")
 }
 
 // noMatch is the answer to a search that matches nothing: the closest keys.

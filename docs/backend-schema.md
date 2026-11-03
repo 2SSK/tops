@@ -773,7 +773,7 @@ one document on stdout per run, also on failure. Fields are only added within a 
 | --------------------------- | -------------- | ------------------------------------------------------------------------------------------------- | ----- |
 | any failure                 | `Error`        | `error: {code, what, why?, fix?}`, `nodes?: [{name, error: {code, what}}]`                        | done  |
 | `validate`                  | `Validation`   | `ok`, `errors: [Problem]`, `warnings: [Problem]`; `Problem` = `{path, line, message}` (`file` added for settings files) | done; `env`, `line` P0.6/T1.4 |
-| `knobs`                     | `Knobs`        | `temporal`, `settings: [{key, type, precedence, roles, apply, default, description, evidence?, layers?: {default, common?, role?, override?, effective}}]` | T1.6 |
+| `knobs`                     | `Knobs`        | `temporal`, `settings: [{key, type, precedence, roles, apply, default, description, evidence?, layers?: {default, common?, roles?: {<role>: [value]}, override?, effective: {<role>: {file, values}}}}]`; `layers` with `-e` only, one `effective` per role that reads the key (`file` is `default` when no file sets it) | T1.6; layers T1.8 |
 | `diff`                      | `EnvDiff`      | `from`, `to`, `promotable: [{path, from, to}]`, `byDesign: [{path, from, to}]`                    | T1.9  |
 | `init`                      | `Init`         | `env`, `created: [path]`                                                                          | T1.10 |
 | `version`                   | `Version`      | `tops: {version, commit, goVersion}`, `nodes?: [{name, helperSha256, uploaded}]`                  | P0.2; nodes T2.3 |
