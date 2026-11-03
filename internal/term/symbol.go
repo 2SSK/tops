@@ -5,17 +5,20 @@ import "strings"
 // Symbol is the status marker printed at the start of a line.
 type Symbol int
 
-// The status markers from the design brief.
+// The status markers from the design brief, then the change markers of plan, diff and drift.
 const (
 	OK Symbol = iota
 	Warn
 	Fail
 	Skip
+	Add
+	Remove
+	Change
 )
 
 var (
-	unicodeMarks = map[Symbol]string{OK: "✓", Warn: "!", Fail: "✗", Skip: "·"}
-	asciiMarks   = map[Symbol]string{OK: "ok  ", Warn: "WARN", Fail: "FAIL", Skip: "-   "}
+	unicodeMarks = map[Symbol]string{OK: "✓", Warn: "!", Fail: "✗", Skip: "·", Add: "+", Remove: "-", Change: "~"}
+	asciiMarks   = map[Symbol]string{OK: "ok  ", Warn: "WARN", Fail: "FAIL", Skip: "-   ", Add: "+", Remove: "-", Change: "~"}
 )
 
 // Mark returns s as printed: a UTF-8 symbol, or a 4-character word when the locale is not UTF-8.

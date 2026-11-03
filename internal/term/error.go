@@ -18,7 +18,7 @@ type UserError struct {
 
 func (e *UserError) Error() string { return e.What }
 
-// ExitCode maps an  error to the process exit code
+// ExitCode maps an error to the process exit code (TRD "Exit codes").
 func ExitCode(err error) int {
 	if err == nil {
 		return 0
@@ -33,13 +33,16 @@ func ExitCode(err error) int {
 	}
 
 	switch {
+	case strings.HasPrefix(ue.Code, "pending."):
+		return 2
 	case strings.HasPrefix(ue.Code, "refused."), ue.Code == "lock.held":
 		return 3
 	case strings.HasPrefix(ue.Code, "spec."),
 		strings.HasPrefix(ue.Code, "secrets."),
 		strings.HasPrefix(ue.Code, "usage."):
 		return 4
-
+	case strings.HasPrefix(ue.Code, "unhealthy."):
+		return 5
 	default:
 		return 1
 	}

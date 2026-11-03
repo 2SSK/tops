@@ -12,10 +12,16 @@ func TestMark(t *testing.T) {
 		{Warn, true, "!"},
 		{Fail, true, "✗"},
 		{Skip, true, "·"},
+		{Add, true, "+"},
+		{Remove, true, "-"},
+		{Change, true, "~"},
 		{OK, false, "ok  "},
 		{Warn, false, "WARN"},
 		{Fail, false, "FAIL"},
 		{Skip, false, "-   "},
+		{Add, false, "+"},
+		{Remove, false, "-"},
+		{Change, false, "~"},
 	}
 
 	for _, tt := range tests {

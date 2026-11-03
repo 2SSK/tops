@@ -7,7 +7,7 @@ import (
 	"github.com/muesli/termenv"
 )
 
-var markColors = map[Symbol]lipgloss.Color{OK: "2", Warn: "3", Fail: "1", Skip: "8"}
+var markColors = map[Symbol]lipgloss.Color{OK: "2", Warn: "3", Fail: "1", Skip: "8", Add: "2", Remove: "1", Change: "3"}
 
 // ColorEnabled reports whether output may use colour: only on a terminal,
 // and never when NO_COLOR is set or TERM is dumb.
