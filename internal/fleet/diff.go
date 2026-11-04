@@ -109,7 +109,7 @@ func shape(nodes []spec.Node) string {
 // compare lists the paths whose values differ, sorted. A path only one side has is
 // a difference with nil on the other side.
 func compare(from, to map[string]any) []Difference {
-	paths := slices.Sorted(maps.Keys(from))
+	paths := slices.Collect(maps.Keys(from))
 	for path := range to {
 		if _, ok := from[path]; !ok {
 			paths = append(paths, path)

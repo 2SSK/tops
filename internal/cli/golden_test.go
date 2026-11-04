@@ -12,7 +12,7 @@ import (
 	"github.com/2SSK/tops/internal/term"
 )
 
-var update = flag.Bool("update", false, "rewrite the golden files in testdata/bad")
+var update = flag.Bool("update", false, "rewrite the golden files in testdata")
 
 // bad holds the lab spec with one thing broken per <rule>.yaml, and its golden output.
 const bad = "testdata/bad"
@@ -39,10 +39,10 @@ func TestValidateGolden(t *testing.T) {
 			if got := term.ExitCode(err); got != 4 {
 				t.Errorf("exit code = %d, want 4", got)
 			}
-			checkGolden(t, fsys, rule+".txt", human)
+			checkGolden(t, bad, rule+".txt", human)
 
 			js, _ := runValidate(t, string(data), "--json")
-			checkGolden(t, fsys, rule+".json", js)
+			checkGolden(t, bad, rule+".json", js)
 
 			var doc validationDocument
 			if err := json.Unmarshal([]byte(js), &doc); err != nil {
@@ -58,17 +58,18 @@ func TestValidateGolden(t *testing.T) {
 	}
 }
 
-// checkGolden compares got with the golden file name in fsys, or writes it with -update.
-func checkGolden(t *testing.T, fsys fs.FS, name, got string) {
+// checkGolden compares got with the golden file name in dir, or writes it with -update.
+func checkGolden(t *testing.T, dir, name, got string) {
 	t.Helper()
+	path := filepath.Join(dir, name)
 	if *update {
-		if err := os.WriteFile(filepath.Join(bad, name), []byte(got), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(got), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return
 	}
 
-	want, err := fs.ReadFile(fsys, name)
+	want, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		t.Fatalf("%v; create it with -update", err)
 	}

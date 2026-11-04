@@ -12,16 +12,10 @@ import (
 // loadEnv finds the fleet root and loads the environment named by -e.
 // Without -e it is a usage error that lists environments: there is no default.
 func loadEnv(cmd *cobra.Command, opts *Options) (*fleet.Env, error) {
-	cwd, err := opts.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("find the fleet root: %w", err)
-	}
-
-	root, err := fleet.FindRoot(cwd, opts.Getenv)
+	root, err := fleetRoot(opts)
 	if err != nil {
 		return nil, err
 	}
-
 	if opts.Env == "" {
 		return nil, &term.UserError{
 			Code: "usage.invalid",
@@ -31,6 +25,15 @@ func loadEnv(cmd *cobra.Command, opts *Options) (*fleet.Env, error) {
 		}
 	}
 	return fleet.Load(root, opts.Env)
+}
+
+// fleetRoot finds the fleet root from the working directory.
+func fleetRoot(opts *Options) (string, error) {
+	cwd, err := opts.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("find the fleet root: %w", err)
+	}
+	return fleet.FindRoot(cwd, opts.Getenv)
 }
 
 // refuseEnv is a PersistentPreRunE for commands that take no environment.

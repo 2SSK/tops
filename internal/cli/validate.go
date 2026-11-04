@@ -61,13 +61,18 @@ func check(env *fleet.Env) (errs, warnings []spec.Problem, err error) {
 			return nil, nil, err
 		}
 	}
+	return checkSettings(env, errs)
+}
 
+// checkSettings adds to errs, the problems of env's cluster.yaml, those of its
+// dynamic-config files, with the catalog of the spec's Temporal minor.
+func checkSettings(env *fleet.Env, errs []spec.Problem) (all, warnings []spec.Problem, err error) {
+	// Without a supported temporal.version there is no catalog, and errs says so.
 	if slices.ContainsFunc(errs, func(p spec.Problem) bool {
 		return p.Path == "temporal.version"
 	}) {
 		return errs, nil, nil
 	}
-
 	c, err := env.Catalog()
 	if err != nil {
 		return nil, nil, err

@@ -1,0 +1,8 @@
+lab → staging  (base/ is shared)
+
+promotable
+  + namespaces.drills                24h                           -
+  + overrides.frontend.namespaceRPS  400 (namespace=drills), 2400  -
+
+by design: 8 differences (tops diff lab staging -v)
+promote with: tops promote lab staging

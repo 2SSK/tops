@@ -1,0 +1,16 @@
+lab → staging  (base/ is shared)
+
+promotable
+  + namespaces.drills                24h                           -
+  + overrides.frontend.namespaceRPS  400 (namespace=drills), 2400  -
+
+by design
+  ~ access.admins              10.80.0.13                                                                                        -
+  ~ access.clients             10.80.0.11                                                                                        -
+  ~ access.monitors            10.80.0.12                                                                                        -
+  ~ cluster                    tops-e2e                                                                                          tops-e2e-staging
+  ~ nodes                      3 nodes: frontend,history,matching,worker · frontend,history,matching,worker · frontend,matching  2 nodes: frontend,history,matching,worker · frontend,history,matching,worker
+  ~ persistence.postgres.host  10.80.0.20                                                                                        10.81.0.20
+  ~ ssh.key                    /home/ops/Code/Projects/building/tops/lab/keys/id_ed25519                                         ../fleet/testdata/fleet/environments/staging/keys/id_ed25519
+  ~ ssh.knownHosts             /home/ops/Code/Projects/building/tops/lab/keys/known_hosts                                        /home/ops/.ssh/known_hosts
+promote with: tops promote lab staging
