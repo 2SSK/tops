@@ -1,10 +1,12 @@
 package fleet
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -24,6 +26,21 @@ var knownSecrets = []string{"TOPS_PG_PASSWORD"}
 
 // secretValue is what a value may contain: it goes into a YAML string and a systemd env file.
 var secretValue = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+
+// SecretsNotIgnored returns a warning when git would commit the environment's secrets.env:
+// the fleet repo's .gitignore must cover it. Outside a git repository, or without git, there
+// is nothing to check. git check-ignore exits 1 for a path that is not ignored or is
+// already tracked, so a secret committed once still warns.
+func (e *Env) SecretsNotIgnored(ctx context.Context) (spec.Problem, bool) {
+	file := filepath.Join(filepath.Dir(e.File), "secrets.env")
+	err := exec.CommandContext(ctx, "git", "-C", e.Root, "check-ignore", "-q", file).Run() //nolint:gosec // no shell, and file is under the fleet root
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		return spec.Problem{}, false
+	}
+
+	return spec.Problem{File: file, Path: "secrets.env", Line: 1, Message: "git would commit it; add environments/*/secrets.env to .gitignore"}, true
+}
 
 // parseSecrets reads secrets.env; file names it in errors. One KEY=VALUE per line, # comment
 // lines and blank lines. Values are taken literally: no quotes, no export, no $ expansion.

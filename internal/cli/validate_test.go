@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -309,5 +310,38 @@ func TestValidateNoCatalog(t *testing.T) {
 	_, err := runValidate(t, strings.Replace(validSpec, "1.31.3", "1.30.4", 1))
 	if err == nil || err.Error() != "no settings catalog for Temporal 1.30" {
 		t.Errorf("err = %v, want the missing catalog named", err)
+	}
+}
+
+// A warning, not an error: the environment is valid and validate exits 0.
+func TestValidateSecretsNotIgnored(t *testing.T) {
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"} {
+		t.Setenv(name, "") // restores it after the test
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := fixtureFleet(t)
+	if out, err := exec.CommandContext(t.Context(), "git", "-C", root, "init", "-q").CombinedOutput(); err != nil { //nolint:gosec // a test's own temp fleet
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	out, err := run(t, root, "-e", "lab", "validate")
+	if err != nil {
+		t.Fatalf("validate: %#v", err)
+	}
+	want := "! environments/lab/secrets.env:1  secrets.env  git would commit it; add environments/*/secrets.env to .gitignore\n" +
+		"✓ environments/lab is valid: cluster tops-e2e, 3 nodes, 10 roles\n"
+	if out != want {
+		t.Errorf("output =\n%s\nwant\n%s", out, want)
+	}
+
+	write(t, root, ".gitignore", "environments/*/secrets.env\n")
+	out, err = run(t, root, "-e", "lab", "validate")
+	if err != nil {
+		t.Fatalf("validate: %#v", err)
+	}
+	if want := "✓ environments/lab is valid: cluster tops-e2e, 3 nodes, 10 roles\n"; out != want {
+		t.Errorf("once ignored, output = %q, want %q", out, want)
 	}
 }

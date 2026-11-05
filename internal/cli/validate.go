@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -25,7 +26,7 @@ func newValidateCommand(opts *Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			errs, warnings, err := check(env)
+			errs, warnings, err := check(cmd.Context(), env)
 			if err != nil {
 				return err
 			}
@@ -50,10 +51,10 @@ func newValidateCommand(opts *Options) *cobra.Command {
 	}
 }
 
-// check runs every offline check of env: cluster.yaml, secrets.env, then the
-// dynamic-config files with the catalog of the spec's Temporal minor. Warnings do not
-// make env invalid.
-func check(env *fleet.Env) (errs, warnings []spec.Problem, err error) {
+// check runs every offline check of env: cluster.yaml, secrets.env, the dynamic-config
+// files with the catalog of the spec's Temporal minor, and that git ignores secrets.env.
+// Warnings do not make env invalid.
+func check(ctx context.Context, env *fleet.Env) (errs, warnings []spec.Problem, err error) {
 	errs = spec.Validate(env.Cluster)
 	// The keys secrets.env must set depend on the spec, so read it only for a valid one.
 	if len(errs) == 0 {
@@ -61,7 +62,14 @@ func check(env *fleet.Env) (errs, warnings []spec.Problem, err error) {
 			return nil, nil, err
 		}
 	}
-	return checkSettings(env, errs)
+	errs, warnings, err = checkSettings(env, errs)
+	if err != nil {
+		return nil, nil, err
+	}
+	if p, found := env.SecretsNotIgnored(ctx); found {
+		warnings = append(warnings, p)
+	}
+	return errs, warnings, nil
 }
 
 // checkSettings adds to errs, the problems of env's cluster.yaml, those of its

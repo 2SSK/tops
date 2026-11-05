@@ -27,6 +27,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `tops knobs <key> -e <env>` shows where the key gets its value in that environment: the default, `base/common.yaml`, each `base/<role>.yaml`, the overrides, and what each role that reads it runs, from which file. `--json` adds `layers` to each setting. With `-e`, the catalog is that of the spec's Temporal minor.
 - `tops diff <from> <to>` compares two environments offline, with defaults applied: `temporal`, `namespaces` and every overrides key decide the exit code (2 when any differs, else 0). `-v` lists the by-design differences such as nodes and persistence, which never affect it. `--json` prints an `EnvDiff` document. Both environments must be valid; `-e` is refused.
 - `tops init <env>` creates `environments/<env>/` from a commented template: `cluster.yaml`, an empty `overrides.yaml`, a 0600 `secrets.env` with its keys commented, and any missing `base/` file. It never overwrites a file, and refuses an existing environment (`spec.env_exists`). `--json` prints an `Init` document.
+- `validate` warns when git would commit `environments/<env>/secrets.env`, including one that is already tracked. Add `environments/*/secrets.env` to the fleet repo's `.gitignore`. Outside a git repository, or without git, the check is skipped.
 - `make generate` rebuilds each settings catalog from Temporal's source; CI fails if the committed catalog is stale.
 
 [Unreleased]: https://github.com/2SSK/tops/commits/main

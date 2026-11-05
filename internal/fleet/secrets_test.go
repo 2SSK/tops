@@ -3,6 +3,7 @@ package fleet
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -190,5 +191,82 @@ func TestCheckPrivateOwner(t *testing.T) {
 	err = checkPrivate(secretsFile, info, uid+1)
 	if !errors.As(err, &ue) || ue.Code != "secrets.mode" || !strings.Contains(ue.Why, "owned by another user") {
 		t.Errorf("err = %#v, want secrets.mode about the owner", err)
+	}
+}
+
+// gitRepo makes the fixture's copy a git repository for the test. A commit hook exports
+// GIT_DIR and friends, which would point these commands at the real repository.
+func gitRepo(t *testing.T, env *Env, ignore string) {
+	t.Helper()
+	for _, name := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"} {
+		t.Setenv(name, "") // restores it after the test
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git(t, env.Root, "init", "-q")
+	if err := os.WriteFile(filepath.Join(env.Root, ".gitignore"), []byte(ignore), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(env.Dir, "secrets.env"), []byte("TOPS_PG_PASSWORD=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func git(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...) //nolint:gosec // a test's own temp fleet
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestSecretsNotIgnored(t *testing.T) {
+	const covered = "environments/*/secrets.env\n"
+	tests := []struct {
+		name    string
+		ignore  string
+		tracked bool
+		want    bool
+	}{
+		{"ignored", covered, false, false},
+		{"not ignored", "*.log\n", false, true},
+		{"ignored but already tracked", covered, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := labWith(t, "base/worker.yaml", "")
+			gitRepo(t, env, tt.ignore)
+			if tt.tracked {
+				git(t, env.Root, "add", "-f", "environments/lab/secrets.env")
+			}
+
+			p, found := env.SecretsNotIgnored(t.Context())
+
+			if found != tt.want {
+				t.Fatalf("found = %v, want %v (%+v)", found, tt.want, p)
+			}
+			if found && (p.File != "environments/lab/secrets.env" || p.Line != 1 || p.Path != "secrets.env") {
+				t.Errorf("problem = %+v", p)
+			}
+		})
+	}
+}
+
+// Without a repository there is nothing git could commit.
+func TestSecretsNotIgnoredOutsideGit(t *testing.T) {
+	env := labWith(t, "base/worker.yaml", "")
+	if p, found := env.SecretsNotIgnored(t.Context()); found {
+		t.Errorf("outside a repository: %+v", p)
+	}
+}
+
+// Without git, tops still works: t.Setenv's PATH has no git in it.
+func TestSecretsNotIgnoredWithoutGit(t *testing.T) {
+	env := labWith(t, "base/worker.yaml", "")
+	gitRepo(t, env, "*.log\n")
+	t.Setenv("PATH", t.TempDir())
+	if p, found := env.SecretsNotIgnored(t.Context()); found {
+		t.Errorf("without git: %+v", p)
 	}
 }
