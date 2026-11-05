@@ -4,7 +4,7 @@ VERSION ?= $(shell git describe --tags --always --dirty)
 # One Temporal version per supported minor; make generate writes catalog-<minor>.json.
 CATALOG_VERSIONS := $(shell cat tools/cataloggen/versions.txt)
 
-.PHONY: build test lint vuln check generate clean
+.PHONY: build test cover lint vuln check generate clean
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/2SSK/tops/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/tops/
@@ -17,10 +17,13 @@ lint:
 	golangci-lint run
 	cd tools/cataloggen && golangci-lint run
 
+cover:
+	awk -f tools/cover.awk coverage.out
+
 vuln:
 	govulncheck ./...
 
-check: lint test vuln
+check: lint test cover vuln
 
 # The generator is its own module (D23): Temporal's source never enters tops' go.mod.
 generate:

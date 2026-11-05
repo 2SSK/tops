@@ -29,5 +29,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `tops init <env>` creates `environments/<env>/` from a commented template: `cluster.yaml`, an empty `overrides.yaml`, a 0600 `secrets.env` with its keys commented, and any missing `base/` file. It never overwrites a file, and refuses an existing environment (`spec.env_exists`). `--json` prints an `Init` document.
 - `validate` warns when git would commit `environments/<env>/secrets.env`, including one that is already tracked. Add `environments/*/secrets.env` to the fleet repo's `.gitignore`. Outside a git repository, or without git, the check is skipped.
 - `make generate` rebuilds each settings catalog from Temporal's source; CI fails if the committed catalog is stale.
+- `make cover` fails below 80% statement coverage overall, or below 90% for `safety`, `plan` and `sizing`; `make check` and CI run it.
 
 [Unreleased]: https://github.com/2SSK/tops/commits/main
