@@ -37,3 +37,7 @@ AGENTS.md
 
 # Temporal source checkouts for make generate
 .cache/
+
+# GoReleaser output and the completions its before hook writes
+dist/
+completions/

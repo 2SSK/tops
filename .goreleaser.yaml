@@ -1,0 +1,48 @@
+version: 2
+
+project_name: tops
+
+before:
+  hooks:
+    - mkdir -p completions
+    - sh -c 'go run ./cmd/tops completion bash > completions/tops.bash'
+    - sh -c 'go run ./cmd/tops completion zsh > completions/_tops'
+    - sh -c 'go run ./cmd/tops completion fish > completions/tops.fish'
+
+builds:
+  - main: ./cmd/tops
+    binary: tops
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    # GoReleaser's default sets main.version; tops reads cli.Version.
+    ldflags:
+      - -s -w -X github.com/2SSK/tops/internal/cli.Version=v{{ .Version }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: darwin
+        goarch: amd64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - completions/*
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+release:
+  draft: true
+
+# CHANGELOG.md is the release's notes, not a list of commits.
+changelog:
+  disable: true

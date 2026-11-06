@@ -30,5 +30,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `validate` warns when git would commit `environments/<env>/secrets.env`, including one that is already tracked. Add `environments/*/secrets.env` to the fleet repo's `.gitignore`. Outside a git repository, or without git, the check is skipped.
 - `make generate` rebuilds each settings catalog from Temporal's source; CI fails if the committed catalog is stale.
 - `make cover` fails below 80% statement coverage overall, or below 90% for `safety`, `plan` and `sizing`; `make check` and CI run it.
+- Releases: linux amd64/arm64 and darwin arm64 archives with shell completions, `checksums.txt`, SBOMs and build attestations. `go install` reports its module version.
 
 [Unreleased]: https://github.com/2SSK/tops/commits/main

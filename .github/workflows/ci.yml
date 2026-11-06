@@ -63,7 +63,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       # Temporal's checkout, its modules and its build cache: a cold run downloads and compiles all of it.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             .cache
@@ -73,3 +73,18 @@ jobs:
       - run: make generate
       - name: the catalog is up to date and byte-stable
         run: git diff --exit-code internal/catalog/
+
+  # The release config must keep working between releases; a snapshot publishes nothing.
+  snapshot:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: v2.20.0
+          args: release --snapshot --clean
