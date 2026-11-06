@@ -75,20 +75,20 @@ The e2e suite may use only this from `./lab` (the user's VPSLAB repo, git-ignore
 | From VPSLAB                                                         | Used for                               |
 | ------------------------------------------------------------------- | -------------------------------------- |
 | `make up`, `make down`, `make reset`, `make test`                   | Node lifecycle                         |
-| An untracked `compose.override.yaml` (Compose merges it automatically) | CPU and memory caps of every node and of `vps-pg`; tops ships it as `test/e2e/vpslab.override.yaml` |
-| Compose profile `pg` (`vps-pg`, postgres:17.11, 10.80.0.20, `max_connections` 300) | PostgreSQL. Today an uncommitted change in VPSLAB's `compose.yaml`: commit it there first (PRD Q19) |
-| Containers `vps-01..03`, `vps-pg`; `docker stop/start/kill`         | Failure injection                      |
+| An untracked `compose.override.yaml` (Compose merges it automatically) | CPU and memory caps of every node; tops ships it as `test/e2e/vpslab.override.yaml` |
+| The external network `vpslab`                                       | `vps-pg` (postgres:17.11, 10.80.0.20, `max_connections` 300, capped) joins it from `test/e2e/postgres.compose.yaml`, which tops owns (PRD Q19) |
+| Containers `vps-01..03`; `docker stop/start/kill`, also on `vps-pg` | Failure injection                      |
 | 10.80.0.11-13, gateway 10.80.0.1 (the workstation)                  | The e2e spec                           |
 | `keys/id_ed25519`; `keys/known_hosts` with a line per node address (`10.80.0.1x`), rewritten by `make up` | SSH |
 
 tops make targets wrap it: `make lab-up` (copy the override, `make -C lab up`, then
-`docker compose --project-directory lab --profile pg up -d --wait vps-pg`), `make lab-renew`
+`docker compose --env-file <the fixture's secrets.env> -f test/e2e/postgres.compose.yaml up -d --wait`), `make lab-renew`
 (`make -C lab reset`, then `lab-up`: new nodes and new host keys, PostgreSQL data kept), `make lab-reset`
 (`vps-pg` down with its volume, then `lab-renew`), `make lab-down`. The harness checks the contract first and
 fails with `lab contract broken: …`.
 
 **One cluster at a time.** tops' e2e fixture (cluster `tops-e2e`) and temporalScale's `lab` environment
-(cluster `tscale-lab`) use the same containers and the same `vps-pg` (PRD D22). Every e2e run starts with
+(cluster `tscale-lab`) use the same containers, and each its own `vps-pg` with the same name and address (PRD D22). Every e2e run starts with
 `make lab-reset`; afterwards temporalScale's lab is rebuilt with its own `tops -e lab bootstrap`. See the
 temporalScale TRD constraints for the other rule about who may use these containers.
 
@@ -585,11 +585,11 @@ by hand once.
 - Go 1.25 container-aware GOMAXPROCS: https://go.dev/doc/go1.25
 
 **Build.** No tops code.
-1. In VPSLAB (your other repo): commit the `vps-pg` service (Q19); add `compose.override.yaml` to its
-   `.gitignore`.
+1. In VPSLAB (your other repo): add `compose.override.yaml` to its `.gitignore`. In tops: write
+   `test/e2e/postgres.compose.yaml` (Q19); the password comes from the fixture's git-ignored `secrets.env`.
 2. Workstation budget: `free -m` with your normal desktop, three times over a working day; the lowest
    `available` is the budget. Write `test/e2e/vpslab.override.yaml` from the lab contract's table so the sum
-   of every cap fits it, and the make targets `lab-up`, `lab-renew`, `lab-reset`, `lab-down`.
+   of every cap, with `vps-pg`'s, fits it, and the make targets `lab-up`, `lab-renew`, `lab-reset`, `lab-down`.
 3. On VPSLAB by hand: download the 1.31.3 release on each node; write one config per role and one
    dynamic-config file; create the databases with `temporal-sql-tool`; start each role with
    `systemd-run --unit=m-<role> -p MemoryAccounting=yes … start --service <role>`; register a namespace.
@@ -605,7 +605,7 @@ curl -s 10.80.0.11:9234/metrics | grep -E '^gomaxprocs '                        
 
 **Pitfalls.**
 - `free` and `nproc` inside a VPSLAB node report the workstation; read the cgroup files.
-- `docker compose down` without `--profile pg` leaves `vps-pg` attached, and the `vpslab` network cannot be
+- VPSLAB's `make down` does not know `vps-pg`, which stays attached, and the `vpslab` network cannot be
   removed while it has endpoints: `lab-down` and `lab-reset` stop `vps-pg` first.
 - `ssh-keygen -R` on `known_hosts` removes the address lines tops needs; `make -C lab up` writes them back.
 - An uncapped `vps-pg` can take memory the nodes were promised; always cap it, and record the cap with every run.

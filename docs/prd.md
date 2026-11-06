@@ -252,7 +252,7 @@ Every mutating run writes a history record on each node it touched and keeps the
 | D19 | The settings catalog is generated from Temporal's source; hot vs restart is classified by hand with evidence, unknown = restart | The source does not encode hot vs restart (TRD "Settings catalog") |
 | D20 | Promotion edits files in the fleet repo; it never touches a cluster                          | GitOps: the change is reviewed and committed, then planned and applied per environment    |
 | D21 | Mutating commands take the lock before they plan; the confirmed plan is the executed plan    | No gap between "what you confirmed" and "what runs" (Terraform's model)                  |
-| D22 | tops' e2e fleet fixture (`test/e2e/fleet`, cluster `tops-e2e`) and temporalScale's `lab` (`tscale-lab`) share the VPSLAB containers and `vps-pg`; one at a time; every e2e run starts with `make lab-reset` | The workstation fits one cluster; the store of one would otherwise refuse the other (`refused.datastore_in_use`) |
+| D22 | tops' e2e fleet fixture (`test/e2e/fleet`, cluster `tops-e2e`) and temporalScale's `lab` (`tscale-lab`) share the VPSLAB containers, and each starts its own `vps-pg` at 10.80.0.20; one at a time; every e2e run starts with `make lab-reset` | The workstation fits one cluster; the store of one would otherwise refuse the other (`refused.datastore_in_use`) |
 | D23 | The catalog generator is its own Go module (`tools/cataloggen`) run against tagged Temporal source checkouts, one per supported minor | One `go.mod` cannot require two minors of `go.temporal.io/server`; generator dependencies stay out of tops |
 | D24 | A spec field enters the schema with the milestone that implements it (`pin` T2.4, `ui` T6.2) | Grow in layers: `validate` never accepts what tops cannot yet do                         |
 | D25 | Phase 0 realigns the existing code with these docs before T1.4                              | The code was written against the Oct 10 design; drift is fixed first, not carried         |
@@ -416,7 +416,7 @@ Full strategy in [TRD "Test strategy"](trd.md#test-strategy).
 | R10 | Schedule: v1.0 is 8-9 months of evenings; motivation and the portfolio window run out first | High | High   | Every milestone is a demoable release; the README's headline table grows with each             |
 | R11 | T2.1 measurement is the largest unknown: a hand-built per-role cluster, a load generator and six runs before any SSH code | High | Medium | Split into T2.1a (budget, caps, hand cluster) and T2.1b (runs); constants re-validated in T8, so a first set need not be perfect |
 | R12 | Catalog generator needs all of Temporal's dependencies to type-check (`go/packages`)     | Medium | Medium | Source checkouts cached under `.cache/`; CI caches the module cache; output committed            |
-| R13 | VPSLAB is shared by tops e2e and temporalScale's `lab`; `vps-pg` exists only as an uncommitted change in VPSLAB | High | Medium | D22; Phase 0 commits `vps-pg` in VPSLAB (Q19); the e2e harness checks the lab contract first |
+| R13 | VPSLAB is shared by tops e2e and temporalScale's `lab`; VPSLAB does not provide `vps-pg` | High | Medium | D22; each consumer owns a compose file for it on VPSLAB's network (Q19); the e2e harness checks the lab contract first |
 
 ## Success metrics
 
@@ -451,7 +451,7 @@ Full strategy in [TRD "Test strategy"](trd.md#test-strategy).
 | Q11 | Supported minors for 1.x: 1.30/1.31 (1.32 exists)?                                                              | Keep for 1.x; move to 1.31/1.32 in v2.0                                                               |
 | Q14 | VPSLAB caps for e2e (default 1 CPU / 1 GiB)?                                                                    | Fit a 4.5 GiB budget: vps-01/02 1.5 CPU / 1.25 GiB, vps-03 1 CPU / 768 MiB, vps-pg 1 CPU / 512 MiB (sized neutrally from measurement), monitoring 512 MiB for 4 containers (4.25 GiB). v2 (`lab-cass`): 6 GiB. Final values from T2.1b |
 | Q18 | How many hours a week go into tops? The schedule above assumes 12-15                                           | Confirm, or give the number; the milestone table is rescaled, scope is not                             |
-| Q19 | `vps-pg` exists only as an uncommitted change to VPSLAB's `compose.yaml`. Commit it in VPSLAB, or define it in tops' `test/e2e/vpslab.override.yaml`? | Commit it in VPSLAB (profile `pg`): temporalScale's docs already name VPSLAB as its owner, and both projects use it |
+| Q19 | `vps-pg` exists only as an uncommitted change to VPSLAB's `compose.yaml`. Commit it in VPSLAB, or define it in tops' `test/e2e/vpslab.override.yaml`? | Neither: VPSLAB stays a generic set of Ubuntu VPSes, and PostgreSQL belongs to whoever needs it. temporalScale has `compose.yaml`, tops `test/e2e/postgres.compose.yaml`; both join the external `vpslab` network and take the password from a git-ignored `secrets.env` |
 | Q20 | temporalScale's shape S3 runs all four roles on vps-03, proposed at 768 MiB. What if T2.1b's fit check says they do not fit? | Give vps-03 vps-01's size (1.25 GiB). That makes the total 4.75 GiB, over the 4.5 GiB budget, so take the 0.5 GiB from the measured slack of `vps-pg` or monitoring. Decide this with the measured numbers, not before |
 
 Resolved since the previous draft (ids kept because temporalScale cites them):
@@ -461,7 +461,7 @@ Resolved since the previous draft (ids kept because temporalScale cites them):
 | Q1  | Workstation-driven, no agent, no state file?                                               | Yes (D1, D2)                                                                         |
 | Q7  | `rollback` with no id: list only, or roll back the newest?                                 | List only: a rollback restarts roles and must name what it restores                  |
 | Q10 | A node stopped by `node remove` but still in the spec?                                     | `apply` refuses (`refused.node_stopped`)                                             |
-| Q13 | Where does the VPSLAB checkout live?                                                        | `tops/lab` (git-ignored); specs name its keys by `~` path                            |
+| Q13 | Where does the VPSLAB checkout live?                                                        | `tops/lab` (git-ignored) for tops; temporalScale pins its own as the `lab/` submodule, and its specs name the keys by relative path                            |
 | Q15 | What is the second environment before real servers exist?                                  | `environments/staging` as files only; validated, diffed, promoted into, never applied |
 | Q16 | Rolling order within an apply?                                                             | Role-major: history, matching, frontend, worker, ui                                  |
 | Q17 | Do `knobs` classifications ship in tops?                                                   | Yes: facts about Temporal's code, versioned with the catalog                         |

@@ -167,13 +167,14 @@ Create a package when a step first needs it; do not stub ahead.
 
 `./lab` is the user's VPSLAB repo (git-ignored in tops): compose project `vpslab`, network 10.80.0.0/24,
 `vps-01..03` at 10.80.0.11-13 (SSH also on 127.0.0.1:2201-2203), user `deploy`, keys in `lab/keys/`,
-`vps-pg` (postgres:17.11, 10.80.0.20, compose profile `pg`; commit it in VPSLAB first, PRD Q19). It is also
+and no database: tops starts its own `vps-pg` (postgres:17.11, 10.80.0.20) from `test/e2e/postgres.compose.yaml`
+(PRD Q19). It is also
 temporalScale's `lab` environment: one cluster at a time (PRD D22).
 
 | Need                       | How                                                                                     |
 | -------------------------- | --------------------------------------------------------------------------------------- |
-| Node and `vps-pg` caps     | `test/e2e/vpslab.override.yaml` copied to `lab/compose.override.yaml` by `make lab-up`; total fits the workstation budget; decided in T2.1b |
-| PostgreSQL                 | `docker compose --profile pg up -d --wait vps-pg` (inside `make lab-up`)               |
+| Node and `vps-pg` caps     | Nodes: `test/e2e/vpslab.override.yaml` copied to `lab/compose.override.yaml` by `make lab-up`; `vps-pg`: in its compose file; total fits the workstation budget; decided in T2.1b |
+| PostgreSQL                 | `docker compose -f test/e2e/postgres.compose.yaml up -d --wait` (inside `make lab-up`)               |
 | Host keys tops can use     | `lab/keys/known_hosts` lines for `10.80.0.11-13`, written by VPSLAB `make up`            |
 | Fresh nodes, data kept     | `make lab-renew`; then `tops -e lab bootstrap` resumes onto them                         |
 | Fresh nodes and database   | `make lab-reset` (every e2e run starts with it)                                          |
