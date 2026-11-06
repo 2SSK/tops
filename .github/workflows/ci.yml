@@ -84,6 +84,9 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - uses: anchore/sbom-action/download-syft@v0
+        with:
+          syft-version: v1.56.0
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: v2.20.0
