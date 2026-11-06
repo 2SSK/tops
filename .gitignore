@@ -41,3 +41,6 @@ AGENTS.md
 # GoReleaser output and the completions its before hook writes
 dist/
 completions/
+
+# The e2e fleet's database password, written by make lab-up
+/test/e2e/fleet/environments/*/secrets.env
