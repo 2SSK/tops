@@ -10,9 +10,23 @@ import (
 )
 
 // Version is the tops version reported by tops version and in every --json
-// document.
-// make build sets it with -ldflags -X; unstamped builds say dev.
+// document. make build and GoReleaser set it with -ldflags -X; go install cannot,
+// so init falls back to the module version it records. Other builds say dev.
 var Version = "dev"
+
+func init() {
+	bi, ok := debug.ReadBuildInfo()
+	Version = moduleVersion(Version, bi, ok)
+}
+
+// moduleVersion is the version a build should report: the stamped  one if -X set it, else
+// the one Go recorded, unless that is the empty or devel of a test binary or plain build.
+func moduleVersion(stamped string, bi *debug.BuildInfo, ok bool) string {
+	if stamped != "dev" || !ok || bi.Main.Version == "" || bi.Main.Version == "(devel)" {
+		return stamped
+	}
+	return bi.Main.Version
+}
 
 // buildInfo is what tops version reports about this binary
 type buildInfo struct {

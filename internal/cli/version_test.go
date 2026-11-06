@@ -37,6 +37,31 @@ func TestNewBuildInfo(t *testing.T) {
 	}
 }
 
+func TestModuleVersion(t *testing.T) {
+	recorded := func(v string) *debug.BuildInfo {
+		return &debug.BuildInfo{Main: debug.Module{Version: v}}
+	}
+	tests := []struct {
+		name, stamped string
+		bi            *debug.BuildInfo
+		ok            bool
+		want          string
+	}{
+		{"go install", "dev", recorded("v0.1.0"), true, "v0.1.0"},
+		{"make build wins", "v0.1.0-3-gabc", recorded("v0.1.0"), true, "v0.1.0-3-gabc"},
+		{"test binary", "dev", recorded(""), true, "dev"},
+		{"plain build", "dev", recorded("(devel)"), true, "dev"},
+		{"no build info", "dev", nil, false, "dev"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := moduleVersion(tt.stamped, tt.bi, tt.ok); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestVersionCommand(t *testing.T) {
 	var out bytes.Buffer
 	cmd := NewRootCommand(&Options{})
