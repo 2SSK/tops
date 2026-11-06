@@ -37,8 +37,6 @@ func NewRootCommand(opts *Options) *cobra.Command {
 
 	root.AddGroup(
 		&cobra.Group{ID: "spec", Title: "Spec:"},
-		&cobra.Group{ID: "change", Title: "Change:"},
-		&cobra.Group{ID: "look", Title: "Look:"},
 		&cobra.Group{ID: "integrate", Title: "Integrate:"},
 	)
 	root.SetHelpCommandGroupID("integrate")

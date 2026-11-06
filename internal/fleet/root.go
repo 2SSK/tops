@@ -59,6 +59,6 @@ func noRoot(why string) error {
 		Code: "spec.no_root",
 		What: "no fleet repo here",
 		Why:  why,
-		Fix:  "run tops inside the fleet repo, or set TOPS_ROOT",
+		Fix:  "run tops inside the fleet repo, set TOPS_ROOT, or start one here: mkdir environments",
 	}
 }
