@@ -34,7 +34,6 @@ Start a fleet repo with its first environment:
 
 ```sh
 mkdir fleet && cd fleet && git init
-mkdir environments
 echo 'environments/*/secrets.env' > .gitignore
 tops init lab
 ```

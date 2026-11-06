@@ -110,6 +110,16 @@ func TestInitKeepsBase(t *testing.T) {
 	}
 }
 
+func TestInitCreatesEnvironments(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "qa"); err != nil {
+		t.Fatal(err)
+	}
+	if !hasEnvironments(root) {
+		t.Error("no environments/ after init")
+	}
+}
+
 func TestInitRefuses(t *testing.T) {
 	root := newRoot(t)
 	if _, err := Init(root, "qa"); err != nil {
@@ -144,10 +154,14 @@ func TestInitRefuses(t *testing.T) {
 	}
 }
 
-// No environments/, or a file where base/ should be: nothing init can repair.
+// A file where environments/ or base/ should be: nothing init can repair.
 func TestInitErrors(t *testing.T) {
-	if _, err := Init(t.TempDir(), "qa"); err == nil {
-		t.Error("no environments/: err = nil")
+	environmentsIsFile := t.TempDir()
+	if err := os.WriteFile(filepath.Join(environmentsIsFile, "environments"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Init(environmentsIsFile, "qa"); err == nil {
+		t.Error("environments is a file: err = nil")
 	}
 
 	baseIsFile := newRoot(t)

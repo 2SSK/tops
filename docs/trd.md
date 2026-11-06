@@ -257,7 +257,8 @@ the original files are restored and the command exits 4. No node is contacted. T
 an empty `overrides.yaml`, a 0600 `secrets.env` with the required keys commented, and any missing
 `base/{common,frontend,history,matching,worker}.yaml` (empty maps). It refuses an existing
 `environments/<env>/` (`spec.env_exists`, exit 4) and never overwrites a file. Outside a fleet root it
-refuses `spec.no_root`; a new fleet repo starts with `mkdir environments`.
+starts one in the working directory, creating `environments/`; a `$TOPS_ROOT` without `environments/` is still
+refused (`spec.no_root`), since that is more likely a typo.
 
 ## Settings catalog
 

@@ -18,7 +18,7 @@ var envName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,30}$`)
 func FindRoot(cwd string, getenv func(string) string) (string, error) {
 	if root := getenv("TOPS_ROOT"); root != "" {
 		if !hasEnvironments(root) {
-			return "", noRoot("TOPS_ROOT=" + root + " has no environments/")
+			return "", noRoot("TOPS_ROOT="+root+" has no environments/", "correct TOPS_ROOT, or unset it")
 		}
 		return root, nil
 	}
@@ -28,9 +28,20 @@ func FindRoot(cwd string, getenv func(string) string) (string, error) {
 			return dir, nil
 		}
 		if dir == filepath.Dir(dir) {
-			return "", noRoot("no environments/ in " + cwd + " or any parent")
+			return "", noRoot("no environments/ in "+cwd+" or any parent", "run tops inside the fleet repo, set TOPS_ROOT, or start one here: tops init <env>")
 		}
 	}
+}
+
+// InitRoot returns where init creates an environment: the fleet root, or cwd when there
+// is none, which starts a new fleet repo there. A $TOPS_ROOT without environments/ is
+// still refused: it is more likely a typo than a place for a new fleet.
+func InitRoot(cwd string, getenv func(string) string) (string, error) {
+	root, err := FindRoot(cwd, getenv)
+	if err != nil && getenv("TOPS_ROOT") == "" {
+		return cwd, nil
+	}
+	return root, err
 }
 
 // Environments returns the environment name under the root, sorted.
@@ -54,11 +65,11 @@ func hasEnvironments(dir string) bool {
 	return err == nil && info.IsDir()
 }
 
-func noRoot(why string) error {
+func noRoot(why, fix string) error {
 	return &term.UserError{
 		Code: "spec.no_root",
 		What: "no fleet repo here",
 		Why:  why,
-		Fix:  "run tops inside the fleet repo, set TOPS_ROOT, or start one here: mkdir environments",
+		Fix:  fix,
 	}
 }

@@ -6,12 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/2SSK/tops/internal/term"
 )
 
-// emptyFleet is a new fleet repo: mkdir environments.
+// emptyFleet is a fleet repo without environments yet.
 func emptyFleet(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -55,6 +56,21 @@ next: edit environments/staging/cluster.yaml, then tops -e staging validate
 `
 	if out != want {
 		t.Errorf("output =\n%s\nwant\n%s", out, want)
+	}
+}
+
+// The first init in an empty directory starts the fleet repo.
+func TestInitStartsFleet(t *testing.T) {
+	root := t.TempDir()
+	out, err := run(t, root, "init", "qa")
+	if err != nil {
+		t.Fatalf("init: %#v", err)
+	}
+	if !strings.HasPrefix(out, "✓ created environments/qa/cluster.yaml\n") {
+		t.Errorf("output =\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, "environments", "qa", "secrets.env")); err != nil {
+		t.Error(err)
 	}
 }
 
@@ -112,7 +128,6 @@ func TestInitRefuses(t *testing.T) {
 		{"-e", root, []string{"-e", "qa", "init", "staging"}, "usage.invalid"},
 		{"no name", root, []string{"init"}, "usage.invalid"},
 		{"bad name", root, []string{"init", "../qa"}, "usage.invalid"},
-		{"no fleet root", "/", []string{"init", "qa"}, "spec.no_root"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

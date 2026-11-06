@@ -35,6 +35,9 @@ func Init(root, name string) ([]string, error) {
 			Fix:  "use lowercase letters, digits and -, starting with a letter",
 		}
 	}
+	if err := os.MkdirAll(filepath.Join(root, "environments"), 0750); err != nil {
+		return nil, fmt.Errorf("create environments: %w", err)
+	}
 	dir := filepath.Join("environments", name)
 	if err := os.Mkdir(filepath.Join(root, dir), 0o750); errors.Is(err, fs.ErrExist) {
 		return nil, &term.UserError{

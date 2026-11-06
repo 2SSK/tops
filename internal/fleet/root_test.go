@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/2SSK/tops/internal/term"
@@ -81,6 +82,46 @@ func TestFindRootNoRoot(t *testing.T) {
 				t.Fatalf("err = %#v, want a spec.no_root UserError", err)
 			}
 		})
+	}
+}
+
+func TestInitRoot(t *testing.T) {
+	fleet := t.TempDir()
+	mkdirs(t, fleet, "environments")
+	inside := filepath.Join(fleet, "environments")
+	empty := t.TempDir()
+
+	tests := []struct {
+		name string
+		cwd  string
+		vars map[string]string
+		want string
+	}{
+		{"inside a fleet", inside, nil, fleet},
+		{"no fleet starts one in cwd", empty, nil, empty},
+		{"TOPS_ROOT is a fleet", empty, map[string]string{"TOPS_ROOT": fleet}, fleet},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InitRoot(tt.cwd, env(tt.vars))
+			if err != nil || got != tt.want {
+				t.Errorf("InitRoot = %q, %v; want %q", got, err, tt.want)
+			}
+		})
+	}
+}
+
+// A $TOPS_ROOT without environments/ is refused, and init is not offered as the way
+// out: it would refuse the same way.
+func TestInitRootRefusesBadTopsRoot(t *testing.T) {
+	_, err := InitRoot(t.TempDir(), env(map[string]string{"TOPS_ROOT": t.TempDir()}))
+
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "spec.no_root" {
+		t.Fatalf("err = %#v, want a spec.no_root UserError", err)
+	}
+	if strings.Contains(ue.Fix, "tops init") {
+		t.Errorf("Fix = %q offers init", ue.Fix)
 	}
 }
 

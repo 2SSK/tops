@@ -161,7 +161,8 @@ promote with: tops promote <A> <B>
 
 Lock: no. Nodes: no.
 
-1. Find the fleet root (`spec.no_root` outside one).
+1. Find the fleet root. Outside one, start one in the working directory (`spec.no_root` only for a `$TOPS_ROOT`
+   without `environments/`).
 2. Refuse if `environments/<env>/` exists (`spec.env_exists`, exit 4).
 3. Write `cluster.yaml` (commented template), `overrides.yaml` (`{}`), `secrets.env` (0600, keys commented);
    create missing `base/*.yaml` (`{}`). Never overwrite.

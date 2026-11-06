@@ -27,7 +27,11 @@ func newInitCommand(opts *Options) *cobra.Command {
 		Args:    usageArgs(cobra.ExactArgs(1)),
 		PreRunE: refuseEnv(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := fleetRoot(opts)
+			cwd, err := opts.Getwd()
+			if err != nil {
+				return fmt.Errorf("find the fleet root: %w", err)
+			}
+			root, err := fleet.InitRoot(cwd, opts.Getenv)
 			if err != nil {
 				return err
 			}
