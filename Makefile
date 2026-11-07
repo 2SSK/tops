@@ -38,14 +38,14 @@ LAB_PG := docker compose --env-file $(LAB_SECRETS) -f test/e2e/postgres.compose.
 
 $(LAB_SECRETS):
 	mkdir -p $(@D)
-	(unmask 077; printf 'TOPS_PG_PASSWORD=%s\n' "$$(openssl rand -hex 24)" > $@)
+	(unmask 077 && printf 'TOPS_PG_PASSWORD=%s\n' "$$(openssl rand -hex 24)" > $@)
 
 lab-up: $(LAB_SECRETS)
 	cp test/e2e/vpslab.override.yaml lab/compose.override.yaml
 	$(MAKE) -C lab up
 	$(LAB_PG) up -d --wait
 
-# vps-pg stays attached to the network, so it goes first or the network cannot removed.
+# vps-pg stays attached to the network, so it goes first or the network cannot be removed.
 lab-down: $(LAB_SECRETS)
 	$(LAB_PG) down
 	$(MAKE) -C lab down

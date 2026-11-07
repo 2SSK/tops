@@ -1,0 +1,12 @@
+# Copied to lab/compose.override.yaml by make lab-up. Compose merges it over VPSLAB's
+# compose.yaml. These are the lab contract's caps; T2.1b replaces them with measured ones.
+services:
+  vps-01:
+    cpus: 1.5
+    mem_limit: 1280m
+  vps-02:
+    cpus: 1.5
+    mem_limit: 1280m
+  vps-03:
+    cpus: 1
+    mem_limit: 768m
