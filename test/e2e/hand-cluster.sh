@@ -147,13 +147,14 @@ config() {
 	done
 }
 
-# vps-01 first: the first history to start writes the cluster's metadata.
+# vps-01 first: the first history to start writes the cluster's metadata. GOMAXPROCS is
+# max(ceil(node CPUs), 2) for every node's cap: Go cannot see the container's cpu.max from here.
 start() {
 	for n in "${NODES[@]}"; do
 		for role in $(roles "$n"); do
 			node "$n" sudo systemd-run --unit="m-$role" --uid=temporal --gid=temporal \
 				-p MemoryAccounting=yes -p Restart=on-failure -p RestartSec=5 -p LimitNOFILE=65536 \
-				-p WorkingDirectory=/var/lib/temporal -p EnvironmentFile=/etc/temporal/temporal.env \
+				-p WorkingDirectory=/var/lib/temporal -p EnvironmentFile=/etc/temporal/temporal.env -p Environment=GOMAXPROCS=2 \
 				/opt/temporal/current/temporal-server --config-file "/etc/temporal/$role.yaml" --allow-no-auth start --service "$role"
 		done
 	done

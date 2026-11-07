@@ -600,7 +600,7 @@ make lab-up && docker inspect -f '{{.Name}} {{.HostConfig.NanoCpus}} {{.HostConf
 for n in 11 12 13; do ssh-keygen -F 10.80.0.$n -f lab/keys/known_hosts >/dev/null || echo "missing 10.80.0.$n"; done
 ssh -F lab/keys/ssh_config vps-01 cat /sys/fs/cgroup/memory.max                      # the container limit
 ssh -F lab/keys/ssh_config vps-01 systemctl show m-history -p MemoryCurrent           # accounting works
-curl -s 10.80.0.11:9234/metrics | grep -E '^gomaxprocs '                              # equals the node's cpus (open point 4)
+curl -s 10.80.0.11:9234/metrics | grep -E '^gomaxprocs'                               # 2, set by the unit (TRD open point 4)
 ```
 
 **Pitfalls.**

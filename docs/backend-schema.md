@@ -657,6 +657,7 @@ runs no frontend, `rpcAddress` is the first frontend node's `<address>:7233`. Th
 ```
 # history.env - rendered by tops. 0640.
 GOMEMLIMIT=1000MiB
+GOMAXPROCS=2
 ```
 
 ```

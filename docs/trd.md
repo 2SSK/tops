@@ -352,10 +352,10 @@ dbPool_r     = clamp(ceil(conn_r × C), 2, maxPool)                  C = effecti
 visPool_r    = clamp(ceil(visConn_r × C), 1, maxPool)
 ```
 
-Rounding happens once, at the end: limits round down to MiB, pools round up. GOMAXPROCS and GOGC are not set:
-Go >= 1.25 derives GOMAXPROCS from the cgroup CPU limit when the main module's `go` directive is >= 1.25
-(verify in T2.1 through the `gomaxprocs` gauge of each role), and GOGC stays at its default while GOMEMLIMIT
-bounds the heap.
+Rounding happens once, at the end: limits round down to MiB, pools round up. `GOMAXPROCS_r` is set to Go's own rule for a limit,
+`max(ceil(node CPUs), 2)`, because Go reads `cpu.max` only from the process's own cgroup: a role's unit has none
+or `max`, so a limit on the node's container is not seen (measured in T2.1: 12 on a 1.5-CPU node). GOGC stays at
+its default while GOMEMLIMIT bounds the heap.
 
 | Refusal                  | When                                                                                                                                                                                                                                 |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -791,7 +791,7 @@ Idempotency: `apply` twice with an unchanged spec changes nothing the second tim
 | 1   | `cluster` must equal Temporal's `currentClusterName`, fixed at first start                                                              | `cluster` is the Temporal cluster name                                         |
 | 2   | No command clears a lock left by a dead workstation                                                                                     | Leases with TTL, no `unlock`                                                   |
 | 3   | Does systemd apply new `MemoryMax`/`CPUWeight` to a running unit on `daemon-reload` alone?                                              | Not relied on: a limits change also changes `GOMEMLIMIT`, so the role restarts |
-| 4   | Does GOMAXPROCS follow the container's `cpu.max` for a process in a child cgroup under VPSLAB?                                          | Check in T2.1 through the `gomaxprocs` gauge                                   |
+| 4   | Does GOMAXPROCS follow the container's `cpu.max` for a process in a child cgroup under VPSLAB?                                          | No: measured 12 in T2.1, so `<role>.env` sets GOMAXPROCS                       |
 | 5   | Does a frontend report SERVING before any history exists?                                                                               | Check in T3.8; stage 1 gate adapts                                             |
 | 6   | Does the worker role need `publicClient.hostPort` in 1.31?                                                                              | Check in T2.5                                                                  |
 | 7   | Where do ui-server release binaries live for the pinned UI version (the `temporalio/ui-server` repository or `temporalio/ui` releases)? | Check in T6.2; `internal/release` holds the URL pattern once                   |
