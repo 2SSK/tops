@@ -57,6 +57,9 @@ else
     # 30 s of quiet before the load and after it, so a chart shows where it starts and stops.
     test/e2e/sample.sh 1000 "$DIR/$NAME.jsonl" &
     sampler=$!
+    # Ctrl-C does not reach a background job, so stop the sampler when this script exits.
+    trap 'kill "$sampler" 2>/dev/null || true' EXIT
+    echo "$NAME: load until $(date -d +16min +%H:%M), then the summary"
     sleep 30
     go -C .cache/omes run ./cmd/omes run-scenario-with-worker \
         --scenario workflow_with_single_noop_activity --language go \
