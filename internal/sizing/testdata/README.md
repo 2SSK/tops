@@ -23,5 +23,11 @@ Written before the first measured run, so the load cannot be tuned to the number
 - The sampler's lowest workstation `memAvailableBytes` stayed above 1 GiB.
 - The workstation is on AC power with the `balanced` power profile, the same for every run.
 
+## Open findings (run vps-01-load-1, 2026-11-08, valid)
+
+1. History memory rose about 9 MiB/min for the whole 25 minutes (116 to 271 MiB) and had not levelled off. The likely cause is its cache filling. The peak depends on how long the run lasts until the cache is bounded; decide that before the remaining runs.
+2. vps-pg reached its 512 MiB processes. Size vps-pg from anon + shmem, not memory.current.
+3. persistence_sql_in_use sampled every 10s was almost always 0. Measure conn_r with another signal.
+
 A run that fails a rule is kept and marked invalid. If the reference rate fails on both node
 sizes, halve it once, here, with the date and the reason.
