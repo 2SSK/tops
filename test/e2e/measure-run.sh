@@ -81,6 +81,6 @@ echo "  restarts $r"
 o=$(($(ooms) - oom_before))
 echo "  oom kills $o"
 [ "$o" = 0 ] || echo "  INVALID: oom_kill"
-min_available=$(jq -s '[.[].memAvailableByets // emtpy] | min' "$DIR/$NAME.jsonl")
+min_available=$(jq -s '[.[].memAvailableBytes // emtpy] | min' "$DIR/$NAME.jsonl")
 echo "  lowest workstation memory $((min_available / 1048576)) MiB"
 [ "$min_available" -gt 1073741824 ] || echo "  INVALID: workstation under 1 GiB"
