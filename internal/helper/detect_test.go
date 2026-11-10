@@ -15,7 +15,7 @@ const meminfo = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\n"
 const gib = 1 << 30
 
 // fakeHost writes files under a temporary directory and returns a Host that reads them.
-// Paths start with proc/ or cgroup/.
+// Paths start with proc/, cgroup/ or etc/.
 func fakeHost(t *testing.T, files map[string]string) Host {
 	t.Helper()
 	root := t.TempDir()
@@ -28,7 +28,7 @@ func fakeHost(t *testing.T, files map[string]string) Host {
 			t.Fatal(err)
 		}
 	}
-	return Host{Proc: filepath.Join(root, "proc"), Cgroup: filepath.Join(root, "cgroup")}
+	return Host{Proc: filepath.Join(root, "proc"), Cgroup: filepath.Join(root, "cgroup"), Etc: filepath.Join(root, "etc")}
 }
 
 func TestMemory(t *testing.T) {

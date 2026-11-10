@@ -460,6 +460,7 @@ type JournalEntry struct {
 | ----------------------- | ----------------------------------------------------------- |
 | `helper.not_root`       | Not run through sudo                                        |
 | `helper.bad_request`    | stdin did not decode as the op's args                       |
+| `helper.failed`         | An op failed for a reason without its own code (message says why) |
 | `lock.lost`             | Fenced op: the lease names another run, or expired          |
 | `file.write`            | Write, fsync or rename failed (path in detail)              |
 | `systemd.job_failed`    | A unit job ended in `failed` (unit and result in detail)    |
