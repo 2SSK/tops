@@ -45,10 +45,12 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 // Hello is what a node is: the helper's build, the machine, and its effective size.
 type Hello struct {
 	HelperVersion string   `json:"helperVersion"`
+	SHA256        string   `json:"sha256"` // of the helper binary itself: the workstation checks the upload
 	Hostname      string   `json:"hostname"`
 	MachineID     string   `json:"machineId"` // two spec entries on one host
 	OS            string   `json:"os"`        // "ubuntu 24.04"
 	Arch          string   `json:"arch"`
 	Memory        Detected `json:"memory"` // effective bytes
 	Cores         Detected `json:"cores"`  // effective cores, fractional from cpu.max
+	ClockSynced   bool     `json:"clockSynced"`
 }

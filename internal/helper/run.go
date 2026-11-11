@@ -2,11 +2,15 @@ package helper
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/2SSK/tops/internal/wire"
 )
@@ -15,7 +19,7 @@ import (
 const (
 	ExitOK         = 0 // the response says ok
 	ExitNotOK      = 1 // the response says why not
-	ExitBadRequest = 2 // the request did not deconde, or helper is not root
+	ExitBadRequest = 2 // the request did not decode, or helper is not root
 )
 
 const (
@@ -29,6 +33,7 @@ type Env struct {
 	Host    Host
 	Root    bool   // effective UID 0
 	Version string // tops' own version, reported by hello
+	Exe     string // this binary, whose sha256 hello reports
 	Stdin   io.Reader
 	Stdout  io.Writer
 	Log     *slog.Logger
@@ -72,7 +77,28 @@ func hello(env Env, args json.RawMessage) (any, error) {
 	if err := decodeArgs(args, &struct{}{}); err != nil {
 		return nil, err
 	}
-	return env.Host.Hello(env.Version)
+	h, err := env.Host.Hello(env.Version)
+	if err != nil {
+		return nil, err
+	}
+	if h.SHA256, err = fileSHA256(env.Exe); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+// fileSHA256 returns the hex sha256 of a file's content.
+func fileSHA256(name string) (string, error) {
+	f, err := os.Open(filepath.Clean(name))
+	if err != nil {
+		return "", fmt.Errorf("hash own binary: %w", err)
+	}
+	defer func() { _ = f.Close() }() // read-only: a close error loses nothing
+	sum := sha256.New()
+	if _, err := io.Copy(sum, f); err != nil {
+		return "", fmt.Errorf("hash own binary: %w", err)
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
 // reply writes the response and the log record, and returns the exit code for them.

@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"errors"
 	"runtime"
 	"testing"
 
@@ -43,6 +44,7 @@ func TestHello(t *testing.T) {
 		Arch:          runtime.GOARCH,
 		Memory:        wire.Detected{Value: 16 * gib, Source: "meminfo", Machine: 16 * gib},
 		Cores:         wire.Detected{Value: 12, Source: "affinity", Machine: 12},
+		ClockSynced:   true,
 	}
 	if got != want {
 		t.Errorf("got  %+v\nwant %+v", got, want)
@@ -91,5 +93,18 @@ func TestHelloErrors(t *testing.T) {
 				t.Errorf("got %+v, want an error", got)
 			}
 		})
+	}
+}
+
+func TestHelloClock(t *testing.T) {
+	h := withAffinity(fakeHost(t, node()), 12)
+	h.Clock = func() (bool, error) { return false, nil }
+	if got, err := h.Hello("v"); err != nil || got.ClockSynced {
+		t.Errorf("unsynchronised clock: ClockSynced %v, err %v", got.ClockSynced, err)
+	}
+
+	h.Clock = func() (bool, error) { return false, errors.New("EPERM") }
+	if got, err := h.Hello("v"); err == nil {
+		t.Errorf("clock error: got %+v, want an error", got)
 	}
 }

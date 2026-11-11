@@ -173,3 +173,12 @@ func TestSystem(t *testing.T) {
 		})
 	}
 }
+
+// The real clock: whatever its state, adjtimex answers.
+func TestSystemClock(t *testing.T) {
+	synced, err := System.Clock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("clock synchronised: %v", synced)
+}

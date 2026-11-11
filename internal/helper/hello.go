@@ -34,6 +34,10 @@ func (h Host) Hello(version string) (wire.Hello, error) {
 	if err != nil {
 		return wire.Hello{}, err
 	}
+	synced, err := h.Clock()
+	if err != nil {
+		return wire.Hello{}, fmt.Errorf("clock: %w", err)
+	}
 
 	return wire.Hello{
 		HelperVersion: version,
@@ -43,6 +47,7 @@ func (h Host) Hello(version string) (wire.Hello, error) {
 		Arch:          runtime.GOARCH,
 		Memory:        memory,
 		Cores:         cores,
+		ClockSynced:   synced,
 	}, nil
 }
 

@@ -39,6 +39,7 @@ func fakeNode(t *testing.T) helper.Host {
 		Cgroup:   filepath.Join(root, "cgroup"),
 		Etc:      filepath.Join(root, "etc"),
 		Affinity: func() (int, error) { return 2, nil },
+		Clock:    func() (bool, error) { return true, nil },
 	}
 }
 
@@ -73,7 +74,8 @@ func TestNodeHello(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &hello); err != nil {
 		t.Fatal(err)
 	}
-	if hello.Hostname != "vps-01" || hello.HelperVersion != Version || hello.Cores.Value != 2 {
+	// The test binary is the running executable: hello hashes whatever runs it.
+	if hello.Hostname != "vps-01" || hello.HelperVersion != Version || hello.Cores.Value != 2 || len(hello.SHA256) != 64 {
 		t.Errorf("hello %+v", hello)
 	}
 	if !strings.Contains(stderr, `"op":"hello"`) {

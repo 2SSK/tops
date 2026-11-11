@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,9 +36,20 @@ func run(t *testing.T, env Env, op wire.Op, stdin string) (int, wire.Response, s
 	return code, resp, stderr.String()
 }
 
+// binary is the fake helper binary rootEnv runs as, and its sha256 (printf %s … | sha256sum).
+const (
+	binary       = "not really an ELF file"
+	binarySHA256 = "56b96426865bae1903cd6b57474f59beee5d8f7bc0a32b9aa5368e3f8293781c"
+)
+
 // rootEnv is a root helper of version v0.2.0 on the fake node of hello_test.go.
 func rootEnv(t *testing.T, files map[string]string) Env {
-	return Env{Host: withAffinity(fakeHost(t, files), 12), Root: true, Version: "v0.2.0"}
+	t.Helper()
+	exe := filepath.Join(t.TempDir(), "tops")
+	if err := os.WriteFile(exe, []byte(binary), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return Env{Host: withAffinity(fakeHost(t, files), 12), Root: true, Version: "v0.2.0", Exe: exe}
 }
 
 func TestRunHello(t *testing.T) {
@@ -51,7 +64,9 @@ func TestRunHello(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &got); err != nil {
 		t.Fatal(err)
 	}
-	if want, _ := env.Host.Hello(env.Version); got != want {
+	want, _ := env.Host.Hello(env.Version)
+	want.SHA256 = binarySHA256
+	if got != want {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 
@@ -125,5 +140,14 @@ func TestRunFails(t *testing.T) {
 	}
 	if !strings.Contains(log, `"run_id":"r-1"`) {
 		t.Errorf("log does not name the run:\n%s", log)
+	}
+}
+
+func TestRunHelloWithoutBinary(t *testing.T) {
+	env := rootEnv(t, node())
+	env.Exe = filepath.Join(t.TempDir(), "gone")
+	code, resp, _ := run(t, env, wire.OpHello, `{"runId":"r-1"}`)
+	if code != ExitNotOK || resp.Error == nil || !strings.Contains(resp.Error.Message, "hash own binary") {
+		t.Errorf("exit %d, response %+v", code, resp.Error)
 	}
 }

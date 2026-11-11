@@ -2,6 +2,7 @@ package cli
 
 import (
 	"log/slog"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -19,10 +20,13 @@ func newNodeCommand(opts *Options) *cobra.Command {
 		Hidden: true,
 		Args:   usageArgs(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// An error leaves exe empty: hello then fails with a response that say so.
+			exe, _ := os.Executable()
 			code := helper.Run(wire.Op(args[0]), helper.Env{
 				Host:    opts.Node,
 				Root:    opts.Geteuid() == 0,
 				Version: Version,
+				Exe:     exe,
 				Stdin:   cmd.InOrStdin(),
 				Stdout:  cmd.OutOrStdout(),
 				Log:     slog.New(slog.NewJSONHandler(cmd.ErrOrStderr(), nil)),

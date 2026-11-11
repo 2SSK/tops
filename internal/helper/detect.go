@@ -19,17 +19,18 @@ import (
 // when a test reads them from somewhere else.
 const cgroupMount = "/sys/fs/cgroup"
 
-// Host is where detection reads a machine: its /proc, its cgroup v2 mount, and the
-// number of CPUs PID 1 may run on.
+// Host is where detection reads a machine: its /proc, its cgroup v2 mount, its /etc, the
+// number of CPUs PID 1 may run on, and whether the kernel clock is synchronised.
 type Host struct {
 	Proc     string
 	Cgroup   string
 	Etc      string
 	Affinity func() (int, error)
+	Clock    func() (bool, error)
 }
 
 // System is the machine the helper runs on.
-var System = Host{Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity}
+var System = Host{Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced}
 
 // Memory returns the effective memory in bytes: MemTotal, lowered by the memory.max of
 // PID 1's cgroup or of any ancestor visible from here.
