@@ -44,6 +44,7 @@ type handler func(env Env, args json.RawMessage) (any, error)
 
 var handlers = map[wire.Op]handler{
 	wire.OpHello: hello,
+	wire.OpFacts: facts,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -85,6 +86,33 @@ func hello(env Env, args json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return h, nil
+}
+
+func facts(env Env, args json.RawMessage) (any, error) {
+	var a wire.FactsArgs
+	if err := decodeArgs(args, &a); err != nil {
+		return nil, err
+	}
+	for path := range a.Want {
+		if err := checkPath(path); err != nil {
+			return nil, err
+		}
+	}
+	for _, dir := range a.Dirs {
+		if err := checkPath(dir); err != nil {
+			return nil, err
+		}
+	}
+	return env.Host.Facts(a)
+}
+
+// checkPath refuses a path that is not absolute and clean: the helper runs as root, so
+// "../" must never reach the filesystem.
+func checkPath(p string) error {
+	if !filepath.IsAbs(p) || filepath.Clean(p) != p {
+		return badRequest("args", fmt.Errorf("path %q is not absolute and clean", p))
+	}
+	return nil
 }
 
 // fileSHA256 returns the hex sha256 of a file's content.

@@ -16,7 +16,7 @@ const gib = 1 << 30
 
 // fakeHost writes files under a temporary directory and returns a Host that reads them,
 // with a synchronised clock.
-// Paths start with proc/, cgroup/ or etc/.
+// root/ is the node's /, so etc/ is both its /etc and Host.Etc.
 func fakeHost(t *testing.T, files map[string]string) Host {
 	t.Helper()
 	root := t.TempDir()
@@ -30,6 +30,7 @@ func fakeHost(t *testing.T, files map[string]string) Host {
 		}
 	}
 	return Host{
+		Root:   root,
 		Proc:   filepath.Join(root, "proc"),
 		Cgroup: filepath.Join(root, "cgroup"),
 		Etc:    filepath.Join(root, "etc"),

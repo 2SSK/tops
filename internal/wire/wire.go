@@ -16,6 +16,7 @@ type Op string
 // The ops the helper runs.
 const (
 	OpHello Op = "hello"
+	OpFacts Op = "facts"
 )
 
 // Request is the one JSON document a helper op reads on stdin.
@@ -61,4 +62,28 @@ type Listener struct {
 	Port    int    `json:"port"`
 	Address string `json:"address"` // "0.0.0.0", "::", "127.0.0.1"
 	Process string `json:"process"` // comm of each holder, sorted and joined: "sshd,systemd"; "" if none is visible
+}
+
+// FactsArgs asks for the state of the files tops renders.
+type FactsArgs struct {
+	Want map[string]string `json:"want"` // absolute path -> the sha256 tops would write
+	Dirs []string          `json:"dirs"` // tops-owned directories: a file there not in Want in unknown
+}
+
+// Facts is what is on a node now, compare with what tops would write.
+type Facts struct {
+	Files    map[string]FileState `json:"files"`    // every path of FactsArgs.Want
+	Unknown  []string             `json:"unknown"`  // files in tops-owned dirs that tops did not render
+	Current  string               `json:"current"`  // target of /opt/temporal/current, "" if absent
+	Releases []string             `json:"releases"` // directories under /opt/temporal/releases
+}
+
+// FileState is one file as it is on the node.
+type FileState struct {
+	Exists  bool   `json:"exists"`
+	SHA256  string `json:"sha256,omitempty"`
+	Mode    string `json:"mode,omitempty"` // "0640"
+	Owner   string `json:"owner,omitempty"`
+	Group   string `json:"group,omitempty"`
+	Content []byte `json:"content,omitempty"` // only when SHA256 differs from the wanted one; base64 in JSON
 }
