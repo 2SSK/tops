@@ -19,3 +19,9 @@ func TestReportedKeepsExitCode(t *testing.T) {
 		t.Error("errors.As does not find *Reported")
 	}
 }
+
+func TestExitMessage(t *testing.T) {
+	if got := (&Exit{Code: 2}).Error(); got != "exit 2" {
+		t.Errorf("Error() = %q", got)
+	}
+}

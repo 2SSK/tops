@@ -4,7 +4,7 @@ VERSION ?= $(shell git describe --tags --always --dirty)
 # One Temporal version per supported minor; make generate writes catalog-<minor>.json.
 CATALOG_VERSIONS := $(shell cat tools/cataloggen/versions.txt)
 
-.PHONY: build test cover lint vuln check generate clean lab-up lab-down lab-renew lab-reset
+.PHONY: build test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/2SSK/tops/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/tops/
@@ -23,7 +23,11 @@ cover:
 vuln:
 	govulncheck ./...
 
-check: lint test cover vuln
+E The workstation binary also  builds for darwin: a Linux-only call must sit behind a build tag.
+cross:
+	GOOS=darwin GOARCH=arm64 go build ./...
+
+check: lint test cover vuln cross
 
 # The generator is its own module (D23): Temporal's source never enters tops' go.mod.
 generate:

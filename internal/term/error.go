@@ -27,6 +27,11 @@ func ExitCode(err error) int {
 		return 130
 	}
 
+	var exit *Exit
+	if errors.As(err, &exit) {
+		return exit.Code
+	}
+
 	var ue *UserError
 	if !errors.As(err, &ue) {
 		return 1

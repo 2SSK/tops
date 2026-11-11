@@ -3,6 +3,8 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/2SSK/tops/internal/helper"
 )
 
 // Options holds the global flags shared by every command, and the process
@@ -12,8 +14,10 @@ type Options struct {
 	NoColor bool
 	Env     string
 
-	Getenv func(string) string
-	Getwd  func() (string, error)
+	Getenv  func(string) string
+	Getwd   func() (string, error)
+	Geteuid func() int
+	Node    helper.Host // the matchine tops node reads
 }
 
 // NewRootCommand returns the tops root command with all subcommands attached.
@@ -47,6 +51,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.AddCommand(newKnobsCommand(opts))
 	root.AddCommand(newDiffCommand(opts))
 	root.AddCommand(newInitCommand(opts))
+	root.AddCommand(newNodeCommand(opts))
 
 	// Cobra adds completion only to a root that has subcommands, so this comes last.
 	root.InitDefaultCompletionCmd()

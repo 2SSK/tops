@@ -33,6 +33,8 @@ func TestExitCode(t *testing.T) {
 		{"unhealthy cluster", &UserError{Code: "unhealthy.cluster"}, 5},
 		{"wrapped user error", fmt.Errorf("load spec: %w", &UserError{Code: "spec.invalid"}), 4},
 		{"interrupted", fmt.Errorf("apply: %w", context.Canceled), 130},
+		{"chosen exit code", &Exit{Code: 2}, 2},
+		{"reported chosen exit code", &Reported{Err: &Exit{Code: 1}}, 1},
 	}
 
 	for _, tt := range tests {

@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/2SSK/tops/internal/wire"
-	"golang.org/x/sys/unix"
 )
 
 // cgroupMount is where cgroup v2 is mounted on a node. Sources name files under it, even
@@ -227,13 +226,4 @@ func (h Host) onlineCPUs() (float64, error) {
 		return 0, errors.New("stat lists no CPUs")
 	}
 	return float64(n), nil
-}
-
-// pid1Affinity counts the CPUs PID 1 may run on.
-func pid1Affinity() (int, error) {
-	var set unix.CPUSet
-	if err := unix.SchedGetaffinity(1, &set); err != nil {
-		return 0, fmt.Errorf("sched_getaffinity: %w", err)
-	}
-	return set.Count(), nil
 }
