@@ -357,7 +357,13 @@ type Hello struct {
 	Memory        Detected   `json:"memory"`    // effective bytes
 	Cores         Detected   `json:"cores"`     // effective cores (fractional from cpu.max)
 	ClockSynced   bool       `json:"clockSynced"`
-	Listeners     []Listener `json:"listeners"` // TCP listeners on ports tops needs: {port, address, process}
+	Listeners     []Listener `json:"listeners"` // every TCP listener; the workstation checks the ports it needs (T3.8)
+}
+
+type Listener struct {
+	Port    int    `json:"port"`
+	Address string `json:"address"` // "0.0.0.0", "::", "127.0.0.1"
+	Process string `json:"process"` // comm of each holder, sorted and joined: "sshd,systemd"; "" if none is visible
 }
 
 type Detected struct {

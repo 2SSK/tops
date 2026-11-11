@@ -25,6 +25,8 @@ func fakeNode(t *testing.T) helper.Host {
 		"proc/sys/kernel/hostname": "vps-01\n",
 		"etc/machine-id":           "99dd89667394438f8f128b862b8bb427\n",
 		"etc/os-release":           "ID=ubuntu\nVERSION_ID=\"24.04\"\n",
+		"proc/net/tcp":             "  sl  local_address rem_address   st\n",
+		"proc/net/tcp6":            "  sl  local_address remote_address st\n",
 	} {
 		p := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {

@@ -2,6 +2,7 @@ package helper
 
 import (
 	"errors"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -16,6 +17,8 @@ func node() map[string]string {
 		"proc/1/cgroup":            "0::/init.scope\n",
 		"proc/sys/kernel/hostname": "vps-01\n",
 		"etc/machine-id":           "99dd89667394438f8f128b862b8bb427\n",
+		"proc/net/tcp":             tcpHeader,
+		"proc/net/tcp6":            tcp6Header,
 		"etc/os-release":           "PRETTY_NAME=\"Ubuntu 24.04.3 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nID=ubuntu\nID_LIKE=debian\n",
 	}
 }
@@ -45,8 +48,9 @@ func TestHello(t *testing.T) {
 		Memory:        wire.Detected{Value: 16 * gib, Source: "meminfo", Machine: 16 * gib},
 		Cores:         wire.Detected{Value: 12, Source: "affinity", Machine: 12},
 		ClockSynced:   true,
+		Listeners:     []wire.Listener{},
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
@@ -86,6 +90,7 @@ func TestHelloErrors(t *testing.T) {
 		{"os-release without ID", change("etc/os-release", "NAME=Ubuntu\nVERSION_ID=24.04\n")},
 		{"no meminfo", change("proc/meminfo", "")},
 		{"no stat", change("proc/stat", "")},
+		{"no tcp6 table", change("proc/net/tcp6", "")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

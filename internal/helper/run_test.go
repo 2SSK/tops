@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -66,7 +67,7 @@ func TestRunHello(t *testing.T) {
 	}
 	want, _ := env.Host.Hello(env.Version)
 	want.SHA256 = binarySHA256
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 

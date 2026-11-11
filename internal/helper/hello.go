@@ -38,6 +38,10 @@ func (h Host) Hello(version string) (wire.Hello, error) {
 	if err != nil {
 		return wire.Hello{}, fmt.Errorf("clock: %w", err)
 	}
+	listeners, err := h.Listeners()
+	if err != nil {
+		return wire.Hello{}, err
+	}
 
 	return wire.Hello{
 		HelperVersion: version,
@@ -48,6 +52,7 @@ func (h Host) Hello(version string) (wire.Hello, error) {
 		Memory:        memory,
 		Cores:         cores,
 		ClockSynced:   synced,
+		Listeners:     listeners,
 	}, nil
 }
 
