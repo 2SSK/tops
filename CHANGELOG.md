@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-12
+
 ### Added
 
 - `tops` root command with help grouped by purpose; a group appears once it has commands.
@@ -31,5 +33,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - `make generate` rebuilds each settings catalog from Temporal's source; CI fails if the committed catalog is stale.
 - `make cover` fails below 80% statement coverage overall, or below 90% for `safety`, `plan` and `sizing`; `make check` and CI run it.
 - Releases: linux amd64/arm64 and darwin arm64 archives with shell completions, `checksums.txt`, SBOMs and build attestations. `go install` reports its module version.
+- A hidden `tops node <op>` command: the node helper later versions run over SSH (`hello`, `facts`). It is internal, not for direct use, and its protocol may change.
 
-[Unreleased]: https://github.com/2SSK/tops/commits/main
+[Unreleased]: https://github.com/2SSK/tops/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/2SSK/tops/releases/tag/v0.1.0
