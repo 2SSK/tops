@@ -3,6 +3,7 @@
 package helper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -21,7 +22,7 @@ const cgroupMount = "/sys/fs/cgroup"
 
 // Host is where the helper reads a machine: its root filesystem, /proc, the cgroup v2
 // mount, /etc, the number of CPUs PID 1 may run on, and whether the kernel clock is
-// synchronised.
+// synchronised, and systemd.
 type Host struct {
 	Root     string
 	Proc     string
@@ -29,10 +30,11 @@ type Host struct {
 	Etc      string
 	Affinity func() (int, error)
 	Clock    func() (bool, error)
+	Systemd  func(ctx context.Context) (Systemd, error)
 }
 
 // System is the machine the helper runs on.
-var System = Host{Root: "/", Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced}
+var System = Host{Root: "/", Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced, Systemd: systemBus}
 
 // Memory returns the effective memory in bytes: MemTotal, lowered by the memory.max of
 // PID 1's cgroup or of any ancestor visible from here.

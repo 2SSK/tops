@@ -23,7 +23,7 @@ func run(t *testing.T, env Env, op wire.Op, stdin string) (int, wire.Response, s
 	env.Stdout = &stdout
 	env.Log = slog.New(slog.NewJSONHandler(&stderr, nil))
 
-	code := Run(op, env)
+	code := Run(t.Context(), op, env)
 
 	var resp wire.Response
 	dec := json.NewDecoder(&stdout)

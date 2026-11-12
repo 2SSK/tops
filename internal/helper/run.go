@@ -2,6 +2,7 @@ package helper
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -40,7 +41,7 @@ type Env struct {
 }
 
 // handler runs one op on its raw args and returns its result.
-type handler func(env Env, args json.RawMessage) (any, error)
+type handler func(ctx context.Context, env Env, args json.RawMessage) (any, error)
 
 var handlers = map[wire.Op]handler{
 	wire.OpHello: hello,
@@ -49,7 +50,7 @@ var handlers = map[wire.Op]handler{
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
 // logs one record, and returns the process's exit code.
-func Run(op wire.Op, env Env) int {
+func Run(ctx context.Context, op wire.Op, env Env) int {
 	if !env.Root {
 		return env.reply(op, "", nil, &wire.Error{Code: codeNotRoot, Message: "tops node must run as root, through sudo"})
 	}
@@ -63,7 +64,7 @@ func Run(op wire.Op, env Env) int {
 		return env.reply(op, req.RunID, nil, badRequest("op", fmt.Errorf("unknown op %q", op)))
 	}
 
-	result, err := handle(env, req.Args)
+	result, err := handle(ctx, env, req.Args)
 	if err != nil {
 		var we *wire.Error
 		if !errors.As(err, &we) {
@@ -74,7 +75,7 @@ func Run(op wire.Op, env Env) int {
 	return env.reply(op, req.RunID, result, nil)
 }
 
-func hello(env Env, args json.RawMessage) (any, error) {
+func hello(_ context.Context, env Env, args json.RawMessage) (any, error) {
 	if err := decodeArgs(args, &struct{}{}); err != nil {
 		return nil, err
 	}
@@ -88,7 +89,7 @@ func hello(env Env, args json.RawMessage) (any, error) {
 	return h, nil
 }
 
-func facts(env Env, args json.RawMessage) (any, error) {
+func facts(ctx context.Context, env Env, args json.RawMessage) (any, error) {
 	var a wire.FactsArgs
 	if err := decodeArgs(args, &a); err != nil {
 		return nil, err
@@ -103,7 +104,7 @@ func facts(env Env, args json.RawMessage) (any, error) {
 			return nil, err
 		}
 	}
-	return env.Host.Facts(a)
+	return env.Host.Facts(ctx, a)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so

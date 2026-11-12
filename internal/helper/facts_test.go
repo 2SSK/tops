@@ -48,7 +48,7 @@ func factsNode(t *testing.T) Host {
 }
 
 func TestFacts(t *testing.T) {
-	got, err := factsNode(t).Facts(wire.FactsArgs{
+	got, err := factsNode(t).Facts(t.Context(), wire.FactsArgs{
 		Want: map[string]string{
 			"/etc/temporal/history.yaml":  sha("rendered\n"),
 			"/etc/temporal/temporal.env":  sha("what tops would write\n"),
@@ -69,6 +69,7 @@ func TestFacts(t *testing.T) {
 		Unknown:  []string{"/etc/temporal/old.yaml", "/etc/temporal/sub/extra.yaml"},
 		Current:  "/opt/temporal/releases/1.31.3",
 		Releases: []string{"1.30.2", "1.31.3"},
+		Units:    map[string]wire.UnitState{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
@@ -77,12 +78,12 @@ func TestFacts(t *testing.T) {
 
 func TestFactsBareNode(t *testing.T) {
 	h := withAffinity(fakeHost(t, map[string]string{"etc/passwd": "", "etc/group": ""}), 12)
-	got, err := h.Facts(wire.FactsArgs{Dirs: []string{"/etc/temporal"}})
+	got, err := h.Facts(t.Context(), wire.FactsArgs{Dirs: []string{"/etc/temporal"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Empty lists, not nil: JSON writes [] so the workstation never sees null.
-	want := wire.Facts{Files: map[string]wire.FileState{}, Unknown: []string{}, Releases: []string{}}
+	want := wire.Facts{Files: map[string]wire.FileState{}, Unknown: []string{}, Releases: []string{}, Units: map[string]wire.UnitState{}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v", got)
 	}
@@ -93,7 +94,7 @@ func TestFactsOwnerWithoutName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(h.Etc, "passwd"), []byte("root:x:0:0::/root:/bin/sh\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := h.Facts(wire.FactsArgs{Want: map[string]string{"/etc/temporal/history.yaml": ""}})
+	got, err := h.Facts(t.Context(), wire.FactsArgs{Want: map[string]string{"/etc/temporal/history.yaml": ""}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +128,7 @@ func TestFactsErrors(t *testing.T) {
 			if tt.damage != nil {
 				tt.damage(t, h)
 			}
-			if got, err := h.Facts(tt.args); err == nil {
+			if got, err := h.Facts(t.Context(), tt.args); err == nil {
 				t.Errorf("got %+v, want an error", got)
 			}
 		})

@@ -1,7 +1,10 @@
 // Package wire holds the types tops and its node helper exchange as JSON.
 package wire
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Detected is one measured property of a node and where its value came from.
 type Detected struct {
@@ -76,6 +79,17 @@ type Facts struct {
 	Unknown  []string             `json:"unknown"`  // files in tops-owned dirs that tops did not render
 	Current  string               `json:"current"`  // target of /opt/temporal/current, "" if absent
 	Releases []string             `json:"releases"` // directories under /opt/temporal/releases
+	Units    map[string]UnitState `json:"units"`    // every temporal@*.service instance systemd has loaded, and temporal-ui
+}
+
+// UnitState is one systemd unit as systemd reports it.
+type UnitState struct {
+	Active    string    `json:"active"` // systemd ActiveState: active, inactive, failed, activating...
+	Enabled   bool      `json:"enabled"`
+	MainPID   int       `json:"mainPid"`   // 0 when not running
+	Exe       string    `json:"exe"`       // the binary MainPID runs, ""  when not running
+	Since     time.Time `json:"since"`     // when it last became active;
+	NRestarts int       `json:"nRestarts"` // restarts by systemd since it was started
 }
 
 // FileState is one file as it is on the node.

@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,7 +16,7 @@ const meminfo = "MemTotal:       16777216 kB\nMemFree:         1048576 kB\n"
 const gib = 1 << 30
 
 // fakeHost writes files under a temporary directory and returns a Host that reads them,
-// with a synchronised clock.
+// with a synchronised clock and no Temporal units.
 // root/ is the node's /, so etc/ is both its /etc and Host.Etc.
 func fakeHost(t *testing.T, files map[string]string) Host {
 	t.Helper()
@@ -35,6 +36,9 @@ func fakeHost(t *testing.T, files map[string]string) Host {
 		Cgroup: filepath.Join(root, "cgroup"),
 		Etc:    filepath.Join(root, "etc"),
 		Clock:  func() (bool, error) { return true, nil },
+		Systemd: func(context.Context) (Systemd, error) {
+			return &fakeSystemd{}, nil
+		},
 	}
 }
 

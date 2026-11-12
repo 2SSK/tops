@@ -2,6 +2,7 @@ package helper
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -24,8 +25,8 @@ const (
 )
 
 // Facts reads the files tops would write, the tops-owned directories, and the installed
-// releases.
-func (h Host) Facts(args wire.FactsArgs) (wire.Facts, error) {
+// releases, and Temporal's systemd units.
+func (h Host) Facts(ctx context.Context, args wire.FactsArgs) (wire.Facts, error) {
 	names, err := h.names()
 	if err != nil {
 		return wire.Facts{}, err
@@ -46,6 +47,9 @@ func (h Host) Facts(args wire.FactsArgs) (wire.Facts, error) {
 		return wire.Facts{}, err
 	}
 	if f.Releases, err = h.releases(); err != nil {
+		return wire.Facts{}, err
+	}
+	if f.Units, err = h.units(ctx); err != nil {
 		return wire.Facts{}, err
 	}
 	return f, nil
