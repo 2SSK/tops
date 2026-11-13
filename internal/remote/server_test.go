@@ -1,0 +1,145 @@
+package remote
+
+import (
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"errors"
+	"io"
+	"net"
+	"strconv"
+	"sync"
+	"testing"
+
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
+)
+
+// execFunc plays a command on the test server and returns its exit status.
+type execFunc func(cmd string, stdin io.Reader, stdout, stderr io.Writer) uint32
+
+// testServer is an SSH server inside the test: real handshake, host keys and public key auth,
+// with commands played by exec instead of a shell.
+type testServer struct {
+	port     int
+	hostKeys []ssh.Signer
+	exec     execFunc
+
+	mu   sync.Mutex
+	cmds []string // every command a client ran, in order
+}
+
+// hostSigner makes a new host key: "ed25519" or "ecdsa".
+func hostSigner(t *testing.T, kind string) ssh.Signer {
+	t.Helper()
+	var priv any
+	var err error
+	switch kind {
+	case "ed25519":
+		_, priv, err = ed25519.GenerateKey(rand.Reader)
+	case "ecdsa":
+		priv, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// startServer listens on 127.0.0.1 and accepts only the client key allowed.
+func startServer(t *testing.T, allowed ssh.PublicKey, exec execFunc, hostKeys ...ssh.Signer) *testServer {
+	t.Helper()
+	s := &testServer{hostKeys: hostKeys, exec: exec}
+	cfg := &ssh.ServerConfig{
+		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			if string(key.Marshal()) != string(allowed.Marshal()) {
+				return nil, errors.New("not authorized")
+			}
+			return nil, nil
+		},
+	}
+	for _, k := range hostKeys {
+		cfg.AddHostKey(k)
+	}
+	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	s.port = l.Addr().(*net.TCPAddr).Port
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go s.serve(conn, cfg)
+		}
+	}()
+	return s
+}
+
+func (s *testServer) serve(conn net.Conn, cfg *ssh.ServerConfig) {
+	sc, chans, reqs, err := ssh.NewServerConn(conn, cfg)
+	if err != nil {
+		return
+	}
+	defer func() { _ = sc.Close() }()
+	go ssh.DiscardRequests(reqs)
+	for nc := range chans {
+		if nc.ChannelType() != "session" {
+			_ = nc.Reject(ssh.UnknownChannelType, "only sessions")
+			continue
+		}
+		ch, creqs, err := nc.Accept()
+		if err != nil {
+			return
+		}
+		go s.session(ch, creqs)
+	}
+}
+
+func (s *testServer) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
+	defer func() { _ = ch.Close() }()
+	for req := range reqs {
+		if req.Type != "exec" {
+			_ = req.Reply(false, nil)
+			continue
+		}
+		var p struct{ Cmd string }
+		if err := ssh.Unmarshal(req.Payload, &p); err != nil {
+			_ = req.Reply(false, nil)
+			return
+		}
+		_ = req.Reply(true, nil)
+		s.mu.Lock()
+		s.cmds = append(s.cmds, p.Cmd)
+		s.mu.Unlock()
+		status := s.exec(p.Cmd, ch, ch, ch.Stderr())
+		_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+		return
+	}
+}
+
+// commands returns every command run so far.
+func (s *testServer) commands() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.cmds...)
+}
+
+// knownHostsFor writes a known_hosts file listing keys for the server's [127.0.0.1]:port.
+func (s *testServer) knownHostsFor(t *testing.T, keys ...ssh.PublicKey) string {
+	t.Helper()
+	host := "[127.0.0.1]:" + strconv.Itoa(s.port)
+	var lines []string
+	for _, k := range keys {
+		lines = append(lines, knownhosts.Line([]string{host}, k))
+	}
+	return writeKnownHosts(t, lines...)
+}
