@@ -10,6 +10,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -25,6 +26,9 @@ type testServer struct {
 	port     int
 	hostKeys []ssh.Signer
 	exec     execFunc
+
+	silent           atomic.Bool // stop answering keepalives: a node that vanished
+	refuseForwarding atomic.Bool // sshd with AllowTcpForwarding no
 
 	mu   sync.Mutex
 	cmds []string // every command a client ran, in order
@@ -90,18 +94,66 @@ func (s *testServer) serve(conn net.Conn, cfg *ssh.ServerConfig) {
 		return
 	}
 	defer func() { _ = sc.Close() }()
-	go ssh.DiscardRequests(reqs)
+	go s.globalRequests(reqs)
 	for nc := range chans {
-		if nc.ChannelType() != "session" {
-			_ = nc.Reject(ssh.UnknownChannelType, "only sessions")
-			continue
+		switch nc.ChannelType() {
+		case "session":
+			ch, creqs, err := nc.Accept()
+			if err != nil {
+				return
+			}
+			go s.session(ch, creqs)
+		case "direct-tcpip":
+			go s.forward(nc)
+		default:
+			_ = nc.Reject(ssh.UnknownChannelType, "only sessions and direct-tcpip")
 		}
-		ch, creqs, err := nc.Accept()
-		if err != nil {
-			return
-		}
-		go s.session(ch, creqs)
 	}
+}
+
+// globalRequests answers keepalives the way OpenSSH does (a failure reply), unless silent.
+func (s *testServer) globalRequests(reqs <-chan *ssh.Request) {
+	for req := range reqs {
+		if req.WantReply && !s.silent.Load() {
+			_ = req.Reply(false, nil)
+		}
+	}
+}
+
+// forward plays sshd's direct-tcpip: it connects from the server to the address asked for.
+func (s *testServer) forward(nc ssh.NewChannel) {
+	if s.refuseForwarding.Load() {
+		_ = nc.Reject(ssh.Prohibited, "port forwarding is disabled")
+		return
+	}
+	var p struct {
+		Host     string
+		Port     uint32
+		OrigHost string
+		OrigPort uint32
+	}
+	if err := ssh.Unmarshal(nc.ExtraData(), &p); err != nil {
+		_ = nc.Reject(ssh.ConnectionFailed, "bad payload")
+		return
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(p.Host, strconv.Itoa(int(p.Port)))) //nolint:noctx // test server
+	if err != nil {
+		_ = nc.Reject(ssh.ConnectionFailed, err.Error())
+		return
+	}
+	ch, reqs, err := nc.Accept()
+	if err != nil {
+		_ = conn.Close()
+		return
+	}
+	go ssh.DiscardRequests(reqs)
+	go func() {
+		_, _ = io.Copy(ch, conn)
+		_ = ch.CloseWrite()
+	}()
+	_, _ = io.Copy(conn, ch)
+	_ = conn.Close()
+	_ = ch.Close()
 }
 
 func (s *testServer) session(ch ssh.Channel, reqs <-chan *ssh.Request) {

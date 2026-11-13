@@ -32,13 +32,17 @@ func newNode(t *testing.T, exec execFunc) (*testServer, Config) {
 	return s, Config{User: "deploy", Port: s.port, Key: keyPath, KnownHosts: s.knownHostsFor(t, host.PublicKey())}
 }
 
-func dial(t *testing.T, cfg Config) (*Client, error) {
+// dial connects to vps-01 at 127.0.0.1; tune changes the Dialer first (timeouts).
+func dial(t *testing.T, cfg Config, tune ...func(*Dialer)) (*Client, error) {
 	t.Helper()
 	d, err := NewDialer(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = d.Close() })
+	for _, f := range tune {
+		f(d)
+	}
 	c, err := d.Dial(t.Context(), "vps-01", "127.0.0.1")
 	if err == nil {
 		t.Cleanup(func() { _ = c.Close() })
@@ -46,9 +50,9 @@ func dial(t *testing.T, cfg Config) (*Client, error) {
 	return c, err
 }
 
-func mustDial(t *testing.T, cfg Config) *Client {
+func mustDial(t *testing.T, cfg Config, tune ...func(*Dialer)) *Client {
 	t.Helper()
-	c, err := dial(t, cfg)
+	c, err := dial(t, cfg, tune...)
 	if err != nil {
 		t.Fatal(err)
 	}

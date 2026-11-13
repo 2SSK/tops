@@ -8,6 +8,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/2SSK/tops/internal/term"
@@ -29,10 +31,11 @@ type Config struct {
 
 // Dialer holds what every node of a run shares: the host keys and the identity.
 type Dialer struct {
-	cfg     Config
-	hosts   knownHosts
-	id      identity
-	timeout time.Duration
+	cfg       Config
+	hosts     knownHosts
+	id        identity
+	timeout   time.Duration
+	keepalive time.Duration
 }
 
 // NewDialer reads known_hsots and the identity once per run. Close it when the run ends.
@@ -45,7 +48,7 @@ func NewDialer(ctx context.Context, cfg Config) (*Dialer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Dialer{cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout}, nil
+	return &Dialer{cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval}, nil
 }
 
 // Close releases the identity (the agent connection).
@@ -58,6 +61,10 @@ type Client struct {
 	Node string
 	Addr string
 	ssh  *ssh.Client
+
+	closed    chan struct{} // closed by Close: stops the keepalive
+	closeOnce sync.Once
+	lost      atomic.Bool // set when the node stopped answering keepalives
 }
 
 // Dial connects to node at address and authenticates both ways: its host key against
@@ -82,7 +89,9 @@ func (d *Dialer) Dial(ctx context.Context, node, address string) (*Client, error
 		_ = conn.Close()
 		return nil, handshakeError(ctx, node, addr, err)
 	}
-	return &Client{Node: node, Addr: addr, ssh: ssh.NewClient(cc, chans, reqs)}, nil
+	c := &Client{Node: node, Addr: addr, ssh: ssh.NewClient(cc, chans, reqs), closed: make(chan struct{})}
+	go c.keepalive(d.keepalive)
+	return c, nil
 }
 
 // handshakeError keeps a host key refusal as it is and names the rest.
@@ -110,7 +119,10 @@ func unreachable(node, addr string, err error) error {
 }
 
 // Close closes the connection and every session on it.
-func (c *Client) Close() error { return c.ssh.Close() }
+func (c *Client) Close() error {
+	c.closeOnce.Do(func() { close(c.closed) })
+	return c.ssh.Close()
+}
 
 // run executes cmd in one session and closes it. Cancelling ctx closes the session, which
 // the helper sees as stdin EOF. A non-zero exit is an *ssh.ExitERror.
@@ -124,8 +136,11 @@ func (c *Client) run(ctx context.Context, cmd string, stdin io.Reader, stdout, s
 	stop := context.AfterFunc(ctx, func() { _ = sess.Close() })
 	defer stop()
 	err = sess.Run(cmd)
-	if ctx.Err() != nil {
+	switch {
+	case ctx.Err() != nil:
 		return ctx.Err()
+	case err != nil && c.lost.Load():
+		return unreachable(c.Node, c.Addr, errLost)
 	}
 	return err
 }
