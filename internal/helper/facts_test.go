@@ -121,6 +121,19 @@ func TestFactsErrors(t *testing.T) {
 			write(t, h, "opt/temporal/releases", "")
 		}, wire.FactsArgs{}},
 		{"a tops-owned dir is a file", nil, wire.FactsArgs{Dirs: []string{"/etc/temporal/old.yaml/x"}}},
+		{"applied.json cut short", func(t *testing.T, h Host) { writeApplied(t, h, `{"applyId":"20261023T153012Z-7f3a"`) }, wire.FactsArgs{}},
+		{"applied.json with a field tops never writes", func(t *testing.T, h Host) {
+			writeApplied(t, h, `{"applyId":"20261023T153012Z-7f3a","files":{},"roles":[],"current":"","by":"me"}`)
+		}, wire.FactsArgs{}},
+		{"applied.json unreadable", func(t *testing.T, h Host) {
+			writeApplied(t, h, "{}")
+			if err := os.Chmod(filepath.Join(h.Root, "var/lib/tops/applied.json"), 0); err != nil {
+				t.Fatal(err)
+			}
+			if os.Getuid() == 0 {
+				t.Skip("root reads a 0000 file")
+			}
+		}, wire.FactsArgs{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -132,6 +145,43 @@ func TestFactsErrors(t *testing.T) {
 				t.Errorf("got %+v, want an error", got)
 			}
 		})
+	}
+}
+
+// writeApplied writes /var/lib/tops/applied.json on h, 0600 as the helper does.
+func writeApplied(t *testing.T, h Host, content string) {
+	t.Helper()
+	p := filepath.Join(h.Root, "var/lib/tops/applied.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFactsApplied(t *testing.T) {
+	h := factsNode(t)
+	writeApplied(t, h, `{
+		"applyId": "20261023T153012Z-7f3a",
+		"files": {"/etc/temporal/history.yaml": {"sha256": "`+sha("rendered\n")+`", "mode": "0640", "owner": "root", "group": "temporal"}},
+		"roles": ["history"],
+		"current": "/opt/temporal/releases/1.31.3"
+	}`)
+	got, err := h.Facts(t.Context(), wire.FactsArgs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &wire.Applied{
+		ApplyID: "20261023T153012Z-7f3a",
+		Files: map[string]wire.AppliedFile{
+			"/etc/temporal/history.yaml": {SHA256: sha("rendered\n"), Mode: "0640", Owner: "root", Group: "temporal"},
+		},
+		Roles:   []string{"history"},
+		Current: "/opt/temporal/releases/1.31.3",
+	}
+	if !reflect.DeepEqual(got.Applied, want) {
+		t.Errorf("got  %+v\nwant %+v", got.Applied, want)
 	}
 }
 
@@ -156,6 +206,10 @@ func TestRunFacts(t *testing.T) {
 		`{"runId":"r-1","args":{"want":{"/etc/temporal/temporal.env":"`+sha("other")+`"},"dirs":["/etc/temporal"]}}`)
 	if code != ExitOK {
 		t.Fatalf("exit %d, response %+v", code, resp.Error)
+	}
+	// A node tops never managed says so explicitly: applied is null, not missing.
+	if !strings.Contains(string(resp.Result), `"applied":null`) {
+		t.Errorf("no \"applied\":null in %s", resp.Result)
 	}
 	// Content crosses the wire as base64 and comes back byte for byte.
 	if !strings.Contains(string(resp.Result), `"content":"ZWRpdGVkIGJ5IGhhbmQK"`) {

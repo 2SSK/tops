@@ -80,6 +80,7 @@ type Facts struct {
 	Current  string               `json:"current"`  // target of /opt/temporal/current, "" if absent
 	Releases []string             `json:"releases"` // directories under /opt/temporal/releases
 	Units    map[string]UnitState `json:"units"`    // every temporal@*.service instance systemd has loaded, and temporal-ui
+	Applied  *Applied             `json:"applied"`  // what tops last wrote here; nil: never managed by tops
 }
 
 // UnitState is one systemd unit as systemd reports it.
@@ -100,4 +101,20 @@ type FileState struct {
 	Owner   string `json:"owner,omitempty"`
 	Group   string `json:"group,omitempty"`
 	Content []byte `json:"content,omitempty"` // only when SHA256 differs from the wanted one; base64 in JSON
+}
+
+// Applied is /var/lib/tops/applied.json: what the last apply wrote on this node.
+type Applied struct {
+	ApplyID string                 `json:"applyId"`
+	Files   map[string]AppliedFile `json:"files"`   // path -> the file as tops wrote it
+	Roles   []string               `json:"roles"`   // role units tops enabled
+	Current string                 `json:"current"` // the release current pointed to
+}
+
+// AppliedFile is one file as tops wrote it.
+type AppliedFile struct {
+	SHA256 string `json:"sha256"`
+	Mode   string `json:"mode"` // "0640"
+	Owner  string `json:"owner"`
+	Group  string `json:"group"`
 }

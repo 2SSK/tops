@@ -18,10 +18,12 @@ import (
 	"github.com/2SSK/tops/internal/wire"
 )
 
-// Where Temporal's releases live on a node (backend schema "Files tops installs").
+// Where Temporal's releases live on a node (backend schema "Files tops installs"), and
+// where tops keeps its own state (backend schema "Node state").
 const (
 	releasesDir = "/opt/temporal/releases"
 	currentLink = "/opt/temporal/current"
+	appliedFile = "/var/lib/tops/applied.json"
 )
 
 // Facts reads the files tops would write, the tops-owned directories, and the installed
@@ -50,6 +52,9 @@ func (h Host) Facts(ctx context.Context, args wire.FactsArgs) (wire.Facts, error
 		return wire.Facts{}, err
 	}
 	if f.Units, err = h.units(ctx); err != nil {
+		return wire.Facts{}, err
+	}
+	if f.Applied, err = h.applied(); err != nil {
 		return wire.Facts{}, err
 	}
 	return f, nil
@@ -141,6 +146,24 @@ func (h Host) releases() ([]string, error) {
 		}
 	}
 	return found, nil
+}
+
+// applied reads what the last apply wrote here, nil on a node tops never managed. The
+// helper wrote the file itself, so anything it cannot decode strictly is corrupt.
+func (h Host) applied() (*wire.Applied, error) {
+	f, err := os.Open(filepath.Join(h.Root, appliedFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", appliedFile, err)
+	}
+	defer func() { _ = f.Close() }()
+	var a wire.Applied
+	if err := decodeStrict(f, &a); err != nil {
+		return nil, fmt.Errorf("%s is corrupt: %w", appliedFile, err)
+	}
+	return &a, nil
 }
 
 // names maps user and group ids to names, from /etc/passwd and /etc/group.
