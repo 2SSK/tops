@@ -18,7 +18,7 @@ import (
 // cmdUpload installs the helper from stdin, atomically: a half-written binary is never at
 // the path cmdHelper runs. The directory is hex we computed, so nothing is interploated.
 func cmdUpload(sha256 string) string {
-	return `sudo -n sh -c 'set -e; d=` + helperDir(sha256) + `; mkdir -p -m 0755 "$d"; cat > "$d/tops.tmp"; chmod 0755 "$d/tops.tmp"; mv "$d/tops.tmp" "$d/tops"'`
+	return `sudo -n sh -c 'set -e; d=` + helperDir(sha256) + `; mkdir -p -m 0755 "$d"; cat > "$d/tops.$$"; chmod 0755 "$d/tops.$$"; mv "$d/tops.$$" "$d/tops"'`
 }
 
 // binary is a linux helper build on the workstation.

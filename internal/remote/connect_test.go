@@ -21,7 +21,7 @@ import (
 
 func TestCmdUpload(t *testing.T) {
 	// The string in TRD "Helper upload and invocation", with the directory filled in.
-	want := `sudo -n sh -c 'set -e; d=/usr/local/lib/tops/0123456789abcdef; mkdir -p -m 0755 "$d"; cat > "$d/tops.tmp"; chmod 0755 "$d/tops.tmp"; mv "$d/tops.tmp" "$d/tops"'`
+	want := `sudo -n sh -c 'set -e; d=/usr/local/lib/tops/0123456789abcdef; mkdir -p -m 0755 "$d"; cat > "$d/tops.$$"; chmod 0755 "$d/tops.$$"; mv "$d/tops.$$" "$d/tops"'`
 	if got := cmdUpload(sha); got != want {
 		t.Errorf("cmdUpload =\n%s\nwant\n%s", got, want)
 	}
