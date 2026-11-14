@@ -31,26 +31,26 @@ and algorithms in the [TRD](trd.md), output in the [design brief](design-brief.m
 
 27 commits, 2026-10-11 to 2026-10-20; ~1,600 lines of Go including tests; `go vet` and `go test ./...` pass.
 
-| Step  | State   | Commits                                                                                     |
-| ----- | ------- | ------------------------------------------------------------------------------------------- |
-| T1.1  | done    | `a5901f2` design docs, `0d89937` scaffold, `8168dcb` README, `eb03785` Makefile + golangci, `3f12113` root command, `1372039`/`b161210` CI, `69a0413` CHANGELOG |
-| T1.2  | done    | `148d0a6` UserError + exit codes, `ad66e88` signals, `5f330c3` what/why/fix, `d6ea9b7` usage errors, `119fdd8`/`3ed2d84`/`25c7337` marks and colour, `d2817cb` x/sys bump (GO-2026-5024), `59ee519` JSON errors, `e1708ac` `--json`/`--no-color` |
-| T1.3  | done (Oct 10 shape) | `86c0ab3` strict parse, `fceb130` defaults, `309a58c`/`6c6da37`/`b1eff38`/`1f1ac1f` validation, `4a10935` load, `75bcdeb` `validate -f`, `fefb956` `--json` |
-| P0    | **next** | Realign the code with these docs (below)                                                   |
+| Step | State               | Commits                                                                                                                                                                                                                                          |
+| ---- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T1.1 | done                | `a5901f2` design docs, `0d89937` scaffold, `8168dcb` README, `eb03785` Makefile + golangci, `3f12113` root command, `1372039`/`b161210` CI, `69a0413` CHANGELOG                                                                                  |
+| T1.2 | done                | `148d0a6` UserError + exit codes, `ad66e88` signals, `5f330c3` what/why/fix, `d6ea9b7` usage errors, `119fdd8`/`3ed2d84`/`25c7337` marks and colour, `d2817cb` x/sys bump (GO-2026-5024), `59ee519` JSON errors, `e1708ac` `--json`/`--no-color` |
+| T1.3 | done (Oct 10 shape) | `86c0ab3` strict parse, `fceb130` defaults, `309a58c`/`6c6da37`/`b1eff38`/`1f1ac1f` validation, `4a10935` load, `75bcdeb` `validate -f`, `fefb956` `--json`                                                                                      |
+| P0   | **next**            | Realign the code with these docs (below)                                                                                                                                                                                                         |
 
 What the review found in the code (each is a Phase 0 step):
 
-| Finding                                                                                      | Step |
-| -------------------------------------------------------------------------------------------- | ---- |
-| `make build` does not set `CGO_ENABLED=0`: a binary built on Arch links glibc and will not run as the helper on Ubuntu 24.04 (CI sets it; the Makefile does not) | P0.1 |
+| Finding                                                                                                                                                           | Step |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `make build` does not set `CGO_ENABLED=0`: a binary built on Arch links glibc and will not run as the helper on Ubuntu 24.04 (CI sets it; the Makefile does not)  | P0.1 |
 | `.PHONY` lists `link` instead of `lint`; comment typos in `internal/term` and `internal/spec` (`retruns`, `prined`, `pritned`, `ot only`, `with  a`, `tops keep`) | P0.1 |
-| `bin/` and `coverage.out` sit in the root but are git-ignored (`bin`, `coverage.*`): nothing to fix, `make clean` removes them | P0.1 |
-| `cli.Version` is a `const "dev"`: `-ldflags -X` cannot set a constant, so every release would report `dev` | P0.2 |
-| `validateAccess` checks clients, monitors and admins but not `healthchecks`                   | P0.3 |
-| CHANGELOG uses `## Added` under `## [Unreleased]` (Keep a Changelog wants `###`)              | P0.3 |
-| `spec.Cluster` has `profile` (never validated), `secrets`, `dynamicConfig`, `ui.node`; `testdata/lab.yaml` uses the deleted bash lab (`tscale`, 10.78.0.0/24) | P0.4 |
-| Nodes have no `roles`                                                                        | P0.5 |
-| A persistent `-f/--file` (default `cluster.yaml`) instead of `-e <env>` and a fleet root     | P0.6 |
+| `bin/` and `coverage.out` sit in the root but are git-ignored (`bin`, `coverage.*`): nothing to fix, `make clean` removes them                                    | P0.1 |
+| `cli.Version` is a `const "dev"`: `-ldflags -X` cannot set a constant, so every release would report `dev`                                                        | P0.2 |
+| `validateAccess` checks clients, monitors and admins but not `healthchecks`                                                                                       | P0.3 |
+| CHANGELOG uses `## Added` under `## [Unreleased]` (Keep a Changelog wants `###`)                                                                                  | P0.3 |
+| `spec.Cluster` has `profile` (never validated), `secrets`, `dynamicConfig`, `ui.node`; `testdata/lab.yaml` uses the deleted bash lab (`tscale`, 10.78.0.0/24)     | P0.4 |
+| Nodes have no `roles`                                                                                                                                             | P0.5 |
+| A persistent `-f/--file` (default `cluster.yaml`) instead of `-e <env>` and a fleet root                                                                          | P0.6 |
 
 ## Order and dependencies
 
@@ -72,14 +72,14 @@ flowchart LR
 
 The e2e suite may use only this from `./lab` (the user's VPSLAB repo, git-ignored in tops):
 
-| From VPSLAB                                                         | Used for                               |
-| ------------------------------------------------------------------- | -------------------------------------- |
-| `make up`, `make down`, `make reset`, `make test`                   | Node lifecycle                         |
-| An untracked `compose.override.yaml` (Compose merges it automatically) | CPU and memory caps of every node; tops ships it as `test/e2e/vpslab.override.yaml` |
-| The external network `vpslab`                                       | `vps-pg` (postgres:17.11, 10.80.0.20, `max_connections` 300, capped) joins it from `test/e2e/postgres.compose.yaml`, which tops owns (PRD Q19) |
-| Containers `vps-01..03`; `docker stop/start/kill`, also on `vps-pg` | Failure injection                      |
-| 10.80.0.11-13, gateway 10.80.0.1 (the workstation)                  | The e2e spec                           |
-| `keys/id_ed25519`; `keys/known_hosts` with a line per node address (`10.80.0.1x`), rewritten by `make up` | SSH |
+| From VPSLAB                                                                                               | Used for                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make up`, `make down`, `make reset`, `make test`                                                         | Node lifecycle                                                                                                                                 |
+| An untracked `compose.override.yaml` (Compose merges it automatically)                                    | CPU and memory caps of every node; tops ships it as `test/e2e/vpslab.override.yaml`                                                            |
+| The external network `vpslab`                                                                             | `vps-pg` (postgres:17.11, 10.80.0.20, `max_connections` 300, capped) joins it from `test/e2e/postgres.compose.yaml`, which tops owns (PRD Q19) |
+| Containers `vps-01..03`; `docker stop/start/kill`, also on `vps-pg`                                       | Failure injection                                                                                                                              |
+| 10.80.0.11-13, gateway 10.80.0.1 (the workstation)                                                        | The e2e spec                                                                                                                                   |
+| `keys/id_ed25519`; `keys/known_hosts` with a line per node address (`10.80.0.1x`), rewritten by `make up` | SSH                                                                                                                                            |
 
 tops make targets wrap it: `make lab-up` (copy the override, `make -C lab up`, then
 `docker compose --env-file <the fixture's secrets.env> -f test/e2e/postgres.compose.yaml up -d --wait`), `make lab-renew`
@@ -97,14 +97,14 @@ all caps exceeds the workstation's free memory, the host overcommits and every n
 measurement) is wrong. The reference workstation has 15 GiB with a desktop running and 4.5–6 GiB free. Caps
 (decided by T2.1's measurements; these are the starting proposal):
 
-| Container                         | CPUs | Memory cap | Runs                                    |
-| --------------------------------- | ---- | ---------- | --------------------------------------- |
-| vps-01                            | 1.5  | 1.25 GiB   | frontend, history, matching, worker (ui from T6) |
-| vps-02                            | 1.5  | 1.25 GiB   | frontend, history, matching, worker     |
-| vps-03                            | 1    | 768 MiB    | frontend, matching                      |
-| vps-pg                            | 1    | 512 MiB    | PostgreSQL, capped like a small database host; size set in T2.1b from measurements, not to force a bottleneck |
-| monitoring (temporalScale's)      | -    | 512 MiB    | Prometheus, Grafana, cAdvisor, host node_exporter (4 containers) |
-| **v1 lab total**                  |      | **4.25 GiB** | fits the 4.5 GiB lower bound          |
+| Container                    | CPUs | Memory cap   | Runs                                                                                                          |
+| ---------------------------- | ---- | ------------ | ------------------------------------------------------------------------------------------------------------- |
+| vps-01                       | 1.5  | 1.25 GiB     | frontend, history, matching, worker (ui from T6)                                                              |
+| vps-02                       | 1.5  | 1.25 GiB     | frontend, history, matching, worker                                                                           |
+| vps-03                       | 1    | 768 MiB      | frontend, matching                                                                                            |
+| vps-pg                       | 1    | 512 MiB      | PostgreSQL, capped like a small database host; size set in T2.1b from measurements, not to force a bottleneck |
+| monitoring (temporalScale's) | -    | 512 MiB      | Prometheus, Grafana, cAdvisor, host node_exporter (4 containers)                                              |
+| **v1 lab total**             |      | **4.25 GiB** | fits the 4.5 GiB lower bound                                                                                  |
 
 The v2 lab (`lab-cass`) stops vps-03 and vps-pg and adds `vps-cass-1..3` (768 MiB each, 256 MB heap; measured
 ~550 MiB idle) and `vps-es` (768 MiB, 256 MB heap; ~670 MiB idle): 2.5 + 2.25 + 0.75 + 0.5 = **6 GiB**, the
@@ -121,20 +121,20 @@ test/e2e/                       //go:build e2e; fleet/ fixture; vpslab.override.
 .cache/                         git-ignored: Temporal source checkouts for the generator
 ```
 
-| Target             | Runs                                                                        | Exists |
-| ------------------ | --------------------------------------------------------------------------- | ------ |
-| `make build`       | `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X …Version=$(VERSION)" -o bin/tops ./cmd/tops` | yes; flags P0.1-P0.2 |
-| `make test`        | `go test -race -coverprofile=coverage.out ./...`                            | yes    |
-| `make lint`        | `golangci-lint run` (gofmt as a formatter)                                  | yes    |
-| `make vuln`        | `govulncheck ./...`                                                         | yes    |
-| `make check`       | lint, test, vuln                                                            | yes    |
-| `make clean`       | removes `bin/`, `coverage.out`                                              | yes    |
-| `make generate`    | source checkouts, `tools/cataloggen` per minor, then `git diff --exit-code internal/catalog` | T1.6 |
-| `make cover`       | Gates: >= 80% overall; >= 90% `safety`, `plan`, `sizing`                    | T1.10  |
-| `make build-linux` | linux/amd64 and linux/arm64 helpers into `bin/`                             | T2.3   |
-| `make helper-test` | systemd containers from `test/helper`, `go test -tags helper` over real SSH | T2.3   |
-| `make lab-up`, `lab-renew`, `lab-reset`, `lab-down` | VPSLAB lifecycle (above)                   | T2.1   |
-| `make e2e`         | `go test -tags e2e -timeout 60m ./test/e2e/... -lab=$(LAB)`; writes `e2e-report.{txt,json}` | T2.6 |
+| Target                                              | Runs                                                                                              | Exists               |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------- |
+| `make build`                                        | `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X …Version=$(VERSION)" -o bin/tops ./cmd/tops` | yes; flags P0.1-P0.2 |
+| `make test`                                         | `go test -race -coverprofile=coverage.out ./...`                                                  | yes                  |
+| `make lint`                                         | `golangci-lint run` (gofmt as a formatter)                                                        | yes                  |
+| `make vuln`                                         | `govulncheck ./...`                                                                               | yes                  |
+| `make check`                                        | lint, test, vuln                                                                                  | yes                  |
+| `make clean`                                        | removes `bin/`, `coverage.out`                                                                    | yes                  |
+| `make generate`                                     | source checkouts, `tools/cataloggen` per minor, then `git diff --exit-code internal/catalog`      | T1.6                 |
+| `make cover`                                        | Gates: >= 80% overall; >= 90% `safety`, `plan`, `sizing`                                          | T1.10                |
+| `make build-linux`                                  | linux/amd64 and linux/arm64 helpers into `bin/`                                                   | T2.3                 |
+| `make helper-test`                                  | systemd containers from `test/helper`, `go test -tags helper` over real SSH                       | T2.3                 |
+| `make lab-up`, `lab-renew`, `lab-reset`, `lab-down` | VPSLAB lifecycle (above)                                                                          | T2.1                 |
+| `make e2e`                                          | `go test -tags e2e -timeout 60m ./test/e2e/... -lab=$(LAB)`; writes `e2e-report.{txt,json}`       | T2.6                 |
 
 # Phase 0: cleanup and realign
 
@@ -147,6 +147,7 @@ and a spec with roles; everything else waits for T1.
 **Goal.** `make build` produces the same static binary CI does, and the tree has no stale typos.
 
 **Learn first.**
+
 - cgo and `CGO_ENABLED`: https://pkg.go.dev/cmd/cgo ; why a cgo binary needs the build machine's glibc:
   https://go.dev/doc/install/source#environment
 - `go build` flags (`-trimpath`, `-ldflags`): https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
@@ -154,11 +155,13 @@ and a spec with roles; everything else waits for T1.
 - `git check-ignore`: https://git-scm.com/docs/git-check-ignore
 
 **Build.**
+
 - `Makefile`: `.PHONY` lists `lint` (not `link`); `build` exports `CGO_ENABLED=0`.
 - Fix the comment typos listed in "Status".
 - Confirm `bin/` and `coverage.out` are ignored; delete them from the working tree with `make clean`.
 
 **Verify.**
+
 ```sh
 make clean build && ! ldd bin/tops 2>/dev/null | grep -q libc        # "not a dynamic executable"
 git check-ignore -q bin/tops coverage.out
@@ -167,6 +170,7 @@ make check
 ```
 
 **Pitfalls.**
+
 - `tops` imports `net` (through cobra today, `x/crypto/ssh` later); with cgo on, the resolver links libc and
   the binary fails on Ubuntu 24.04 with `GLIBC_2.xx not found` when built on a newer distro. CI hides this
   because it sets the variable itself.
@@ -179,11 +183,13 @@ make check
 **Goal.** `tops version` prints the version the binary was built as, with commit and Go version.
 
 **Learn first.**
+
 - Linker `-X`: https://pkg.go.dev/cmd/link (it sets string variables, never constants)
 - `runtime/debug.ReadBuildInfo` and its `vcs.*` settings: https://pkg.go.dev/runtime/debug#BuildInfo
 - `git describe`: https://git-scm.com/docs/git-describe ; semver: https://semver.org/
 
 **Build.**
+
 - `internal/cli`: the version becomes a package `var` (default `dev`); every `--json` document already reads
   it.
 - `Makefile`: `VERSION ?= $(shell git describe --tags --always --dirty)` passed with `-X`; `-s -w`.
@@ -191,6 +197,7 @@ make check
   (`tops: {version, commit, goVersion}`). Commit and Go version from `ReadBuildInfo`.
 
 **Verify.**
+
 ```sh
 make build && bin/tops version | grep -v ' dev '
 bin/tops version --json | jq -e '.kind == "Version" and .tops.version != "dev" and (.tops.commit | length) > 0'
@@ -198,6 +205,7 @@ go run ./cmd/tops version | grep -q ' dev '                         # unstamped 
 ```
 
 **Pitfalls.**
+
 - `-X` with a wrong import path or on a constant is silently ignored. Test the built binary, not a unit test.
 - `go test` binaries carry no VCS stamp; keep the build-info reading behind a small function you can feed in
   tests.
@@ -209,10 +217,12 @@ go run ./cmd/tops version | grep -q ' dev '                         # unstamped 
 **Goal.** All four `access` lists are validated; the CHANGELOG follows Keep a Changelog.
 
 **Learn first.**
+
 - Table-driven tests: https://go.dev/wiki/TableDrivenTests
 - Keep a Changelog 1.1.0: https://keepachangelog.com/en/1.1.0/
 
 **Build.**
+
 - A failing row in `validate_test.go` (`access.healthchecks[0]` not an address; a duplicate), then the one
   missing call in `validateAccess`.
 - CHANGELOG: `## Added` → `### Added`; capitalise each entry; add the `[Unreleased]` link at the bottom.
@@ -220,6 +230,7 @@ go run ./cmd/tops version | grep -q ' dev '                         # unstamped 
   `validate` with `-e`); there is no "Removed" entry for a flag no release ever had.
 
 **Verify.**
+
 ```sh
 go test -race -run TestValidate ./internal/spec/... -v | grep -q healthchecks
 grep -q '^### Added' CHANGELOG.md && ! grep -q '^## Added' CHANGELOG.md
@@ -235,10 +246,12 @@ that does not exercise it, which is how this one slipped.
 **Goal.** `spec.Cluster` holds only fields these docs define for this stage.
 
 **Learn first.**
+
 - Backend schema "Fields" (the `Since` column) and the "Removed in P0.4" note.
 - AGENTS.md: no compatibility layers.
 
 **Build.**
+
 - Delete `Profile`, `Secrets`, `DynamicConfig`, the `UI` type and field, `validateUI`, and the `Secrets` and
   `DynamicConfig` defaults (and `nodeExists` if nothing else uses it).
 - Replace `internal/spec/testdata/lab.yaml` with VPSLAB values: cluster `tops-e2e`, `10.80.0.x`, user
@@ -246,6 +259,7 @@ that does not exercise it, which is how this one slipped.
 - A test row proving `profile:` and `ui:` are now unknown keys (exit 4 with a line).
 
 **Verify.**
+
 ```sh
 go test -race ./...
 ! grep -rnE 'Profile|DynamicConfig|10\.78\.|tscale' internal/
@@ -261,10 +275,12 @@ returns as a role, with a different shape (D24).
 **Goal.** Every node lists the Temporal roles it runs, and the spec says when a role runs nowhere.
 
 **Learn first.**
+
 - The four roles: https://docs.temporal.io/temporal-service/temporal-server ; concepts "The four roles",
   "One unit per role".
 
 **Build.**
+
 - `Node.Roles []string` (`yaml:"roles"`).
 - One ordered role list in `internal/spec` (frontend, history, matching, worker): it will drive stage
   order, ports, sizing and completion, so it exists once.
@@ -273,11 +289,13 @@ returns as a role, with a different shape (D24).
 - Fixture: vps-01 and vps-02 all four, vps-03 frontend and matching.
 
 **Verify.**
+
 ```sh
 go test -race -cover ./internal/spec/...   # rows: missing roles, empty, unknown ("matchng"), duplicate, no history anywhere, ui (not yet a role)
 ```
 
 **Pitfalls.**
+
 - Role names are lowercase and exact; do not accept `History`.
 - Do not add `ui` yet (T6.2) or `pin` (T2.4): `validate` must never accept what tops cannot do (D24).
 
@@ -288,6 +306,7 @@ go test -race -cover ./internal/spec/...   # rows: missing roles, empty, unknown
 **Goal.** `tops -e <env> validate` loads `environments/<env>/cluster.yaml` from the fleet root; `-f` is gone.
 
 **Learn first.**
+
 - How git finds its root by walking up: https://git-scm.com/docs/git-rev-parse#Documentation/git-rev-parse.txt---show-toplevel
 - `path/filepath` (`Dir`, `Join`, `Abs`), `os.Stat`, `io/fs`: https://pkg.go.dev/path/filepath , https://pkg.go.dev/io/fs
 - Cobra persistent flags and `PersistentPreRunE`: https://pkg.go.dev/github.com/spf13/cobra#Command
@@ -295,6 +314,7 @@ go test -race -cover ./internal/spec/...   # rows: missing roles, empty, unknown
 - TRD "Fleet root and environments".
 
 **Build.**
+
 - `internal/fleet`: `FindRoot(cwd, getenv)` (`TOPS_ROOT`, else walk up to a directory containing
   `environments/`); `Environments(root)` (sorted names matching `^[a-z][a-z0-9-]{0,30}$`);
   `Load(root, env)` returning the cluster and its file path, with `ssh.key`/`ssh.knownHosts` expanded (`~`)
@@ -312,6 +332,7 @@ go test -race -cover ./internal/spec/...   # rows: missing roles, empty, unknown
   move from `-f testdata/…` to this root.
 
 **Verify.**
+
 ```sh
 go test -race -cover ./internal/fleet/... ./internal/cli/...
 make build && export TOPS_ROOT=$PWD/internal/fleet/testdata/fleet
@@ -323,6 +344,7 @@ bin/tops validate -f x 2>&1 | grep -q 'unknown shorthand flag'     # -f is gone
 ```
 
 **Pitfalls.**
+
 - A default environment, or a `TOPS_ENV` variable, is the classic way to apply to production by accident.
   Do not add one.
 - Resolve spec paths from the environment directory, not the working directory: tops runs from anywhere
@@ -361,11 +383,13 @@ with `toolchain go1.26.8`; jobs lint, test, vuln, build (linux/amd64, linux/arm6
 **Goal.** Every validation problem names its file and line (H5).
 
 **Learn first.**
+
 - `yaml.Node` (kinds, `Line`, `Content` pairs in mappings): https://pkg.go.dev/go.yaml.in/yaml/v3#Node
 - `yaml.TypeError` (strict-decode errors are strings starting `line N:`): https://pkg.go.dev/go.yaml.in/yaml/v3#TypeError
 - Golden files: https://pkg.go.dev/testing (the `-update` flag pattern)
 
 **Build.**
+
 - `Problem` gains `Line` (and `File`, used for settings files from T1.8).
 - After the strict decode, decode once more into a `yaml.Node`; a path walker maps `nodes[2].roles[1]` to the
   node's line; a missing key reports its parent's line.
@@ -375,6 +399,7 @@ with `toolchain go1.26.8`; jobs lint, test, vuln, build (linux/amd64, linux/arm6
 - `testdata/bad/*.yaml` fixtures, one per rule, with golden output (human and JSON).
 
 **Verify.**
+
 ```sh
 go test -race ./internal/spec/... ./internal/cli/...
 for f in internal/spec/testdata/bad/*.yaml; do … ; done   # via the golden test, not by hand
@@ -382,6 +407,7 @@ bin/tops -e bad validate --json | jq -e 'all(.errors[]; .path != "" and .line > 
 ```
 
 **Pitfalls.**
+
 - `yaml.Node.Decode` ignores `KnownFields`; keep the strict decoder for the struct and use the node only for
   lines.
 - Mapping nodes store keys and values alternately in `Content`; flow style (`{ name: x }`) has lines too.
@@ -394,6 +420,7 @@ key" rows, which carry the parent's line.
 **Goal.** `environments/<env>/secrets.env` is read safely, checked by `validate`, and never printed.
 
 **Learn first.**
+
 - `stat(2)`, mode and owner: https://man7.org/linux/man-pages/man2/stat.2.html ; `io/fs.FileMode`:
   https://pkg.go.dev/io/fs#FileMode ; `syscall.Stat_t` for the uid: https://pkg.go.dev/syscall#Stat_t
 - `slog.LogValuer`: https://pkg.go.dev/log/slog#LogValuer ; `fmt.Stringer`
@@ -406,12 +433,14 @@ an explicit `Reveal()` used only where the value is rendered. `validate` checks 
 it only when they connect.
 
 **Verify.**
+
 ```sh
 go test -race ./internal/fleet/... ./internal/secret/...   # rows: 0644, other owner, symlink, $ in value, quotes, unknown key, missing key
 chmod 644 $TOPS_ROOT/environments/lab/secrets.env; bin/tops -e lab validate; test $? -eq 4; chmod 600 $TOPS_ROOT/environments/lab/secrets.env
 ```
 
 **Pitfalls.**
+
 - git does not keep 0600: tests create the fixture's secrets file in `t.TempDir()` with the mode they need.
 - A test that formats a `Value` with `%v`, `%+v`, `%#v` and `slog` must see `***` every time.
 
@@ -422,6 +451,7 @@ chmod 644 $TOPS_ROOT/environments/lab/secrets.env; bin/tops -e lab validate; tes
 **Goal.** Every dynamic-config key of Temporal 1.31 is searchable offline: key, roles, default, meaning.
 
 **Learn first.**
+
 - `go generate`: https://go.dev/blog/generate ; multi-module repositories:
   https://go.dev/doc/modules/managing-source#multiple-module-source
 - `go/packages`: https://pkg.go.dev/golang.org/x/tools/go/packages ; `go/types` tutorial:
@@ -431,6 +461,7 @@ chmod 644 $TOPS_ROOT/environments/lab/secrets.env; bin/tops -e lab validate; tes
 - `embed`: https://pkg.go.dev/embed ; TRD "Settings catalog".
 
 **Build.**
+
 - `tools/cataloggen/` with its own `go.mod` (D23). `versions.txt`. `make generate` clones the tag into
   `.cache/temporal/v<version>` (add `.cache/` to `.gitignore`) and runs the generator per minor.
 - The generator: load the checkout with `go/packages`; for each `New…Setting(…)` call in `constants.go`
@@ -438,12 +469,13 @@ chmod 644 $TOPS_ROOT/environments/lab/secrets.env; bin/tops -e lab validate; tes
   else source text), description; roles from `types.Info.Uses` of each variable across `service/<role>/…`
   (else `shared`); the `candidate` hint. Sorted, timestamp-free output.
 - `internal/catalog`: embeds `catalog-*.json`; `Lookup(minor, key)` (case-insensitive), `Search(minor,
-  text)`, `Closest(minor, key)` (prefix match, then edit distance; a 15-line function, no dependency).
+text)`, `Closest(minor, key)` (prefix match, then edit distance; a 15-line function, no dependency).
 - `tops knobs [text] [-v]` (design brief); `--json` `Knobs`.
 - CI `generate` job with the module cache and `.cache/` cached; lint the generator module separately
   (`cd tools/cataloggen && golangci-lint run`): the root `./...` does not include a nested module.
 
 **Verify.**
+
 ```sh
 make generate                                              # re-run is byte-stable (git diff --exit-code)
 go test -race ./internal/catalog/...                       # fixture: history.cacheTTL -> [history], default 1h, candidate restart
@@ -453,6 +485,7 @@ bin/tops knobs cacheTTL --json | jq -e 'any(.settings[]; .key == "history.cacheT
 ```
 
 **Pitfalls.**
+
 - The first `go/packages` load downloads Temporal's whole dependency graph; do it once, then work offline.
 - Defaults like `256000*4*1024` or `time.Minute` need `go/constant`, not string parsing.
 - A setting referenced only from `common/…` may still be read by just one role at run time; `shared` is the
@@ -475,6 +508,7 @@ stored (`service/history/configs/config.go`) and where it is called (`service/hi
 the fixture's): cite the call site; a `hot` entry also carries `lab: pending` until T4.3.
 
 **Verify.**
+
 ```sh
 go test -race ./internal/catalog/...          # unknown default; a class for a key not in the catalog fails
 bin/tops knobs history.cacheTTL --json | jq -e '.settings[0].apply == "restart"'
@@ -499,6 +533,7 @@ https://docs.temporal.io/references/dynamic-configuration
 problems with `file` and `line`.
 
 **Verify.**
+
 ```sh
 go test -race -cover ./internal/settings/...  # order, whole-key replace, role routing, shared keys, unknown key, wrong type, case folding
 bin/tops knobs frontend.namespaceRPS -e lab --json | jq -e '.settings[0].layers.effective != null'
@@ -520,6 +555,7 @@ output and `EnvDiff`. `term`: the `+ - ~` marks and the `pending.`/`unhealthy.` 
 "Exit codes"), with rows in `ExitCode`'s table test.
 
 **Verify.**
+
 ```sh
 go test -race ./internal/fleet/... ./internal/term/...
 bin/tops diff lab staging; test $? -eq 2
@@ -553,15 +589,15 @@ point them at `internal/cli.Version`.
 
 ### T1 acceptance
 
-| Check                                   | Command                                                                                       |
-| --------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Installs, reports its version           | `go install github.com/2SSK/tops/cmd/tops@v0.1.0 && tops version \| grep -q 0.1.0`            |
-| Lab spec valid                          | `tops -e lab validate; test $? -eq 0` (temporalScale)                                         |
-| Errors point at the field               | `tops -e bad validate --json \| jq -e 'all(.errors[]; .path != "" and .line > 0)'` (fixture)   |
-| Catalog complete and stable             | `make generate`; `tops knobs --json \| jq -e '.settings \| length > 500'`                      |
-| Environments compared                   | `tops diff lab staging -v` (temporalScale): only intended differences                          |
-| Init                                    | `tops init qa && test "$(stat -c %a environments/qa/secrets.env)" = 600 && ! tops init qa`    |
-| Release artefacts                       | `gh release view v0.1.0 --json assets -q '.assets[].name'` lists checksums, SBOM, archives   |
+| Check                         | Command                                                                                      |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| Installs, reports its version | `go install github.com/2SSK/tops/cmd/tops@v0.1.0 && tops version \| grep -q 0.1.0`           |
+| Lab spec valid                | `tops -e lab validate; test $? -eq 0` (temporalScale)                                        |
+| Errors point at the field     | `tops -e bad validate --json \| jq -e 'all(.errors[]; .path != "" and .line > 0)'` (fixture) |
+| Catalog complete and stable   | `make generate`; `tops knobs --json \| jq -e '.settings \| length > 500'`                    |
+| Environments compared         | `tops diff lab staging -v` (temporalScale): only intended differences                        |
+| Init                          | `tops init qa && test "$(stat -c %a environments/qa/secrets.env)" = 600 && ! tops init qa`   |
+| Release artefacts             | `gh release view v0.1.0 --json assets -q '.assets[].name'` lists checksums, SBOM, archives   |
 
 # T2: measure, reach, size, plan (v0.2.0)
 
@@ -574,6 +610,7 @@ Demo: on a bare VPSLAB, `tops -e lab capacity` shows each node's detected size a
 by hand once.
 
 **Learn first.**
+
 - Compose override merging and profiles: https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/ ,
   https://docs.docker.com/compose/how-tos/profiles/
 - systemd resource control and `systemd-run`:
@@ -585,6 +622,7 @@ by hand once.
 - Go 1.25 container-aware GOMAXPROCS: https://go.dev/doc/go1.25
 
 **Build.** No tops code.
+
 1. In VPSLAB (your other repo): add `compose.override.yaml` to its `.gitignore`. In tops: write
    `test/e2e/postgres.compose.yaml` (Q19); the password comes from the fixture's git-ignored `secrets.env`.
 2. Workstation budget: `free -m` with your normal desktop, three times over a working day; the lowest
@@ -595,6 +633,7 @@ by hand once.
    `systemd-run --unit=m-<role> -p MemoryAccounting=yes … start --service <role>`; register a namespace.
 
 **Verify.**
+
 ```sh
 make lab-up && docker inspect -f '{{.Name}} {{.HostConfig.NanoCpus}} {{.HostConfig.Memory}}' vps-01 vps-02 vps-03 vps-pg
 for n in 11 12 13; do ssh-keygen -F 10.80.0.$n -f lab/keys/known_hosts >/dev/null || echo "missing 10.80.0.$n"; done
@@ -604,6 +643,7 @@ curl -s 10.80.0.11:9234/metrics | grep -E '^gomaxprocs'                         
 ```
 
 **Pitfalls.**
+
 - `free` and `nproc` inside a VPSLAB node report the workstation; read the cgroup files.
 - VPSLAB's `make down` does not know `vps-pg`, which stays attached, and the `vpslab` network cannot be
   removed while it has endpoints: `lab-down` and `lab-reset` stop `vps-pg` first.
@@ -618,11 +658,13 @@ hand-run frontend; you can explain every line of the configs you wrote (they bec
 **Goal.** Every constant of the TRD formula exists, with its raw samples.
 
 **Learn first.**
+
 - omes (Temporal's load generator): https://github.com/temporalio/omes
 - Go GC guide: https://go.dev/doc/gc-guide
 - TRD "Constants and how they are measured"; concepts "Measurement discipline".
 
 **Build.** No tops code.
+
 1. Write the reference load down before the first run: omes scenario `workflow_with_single_noop_activity`, one
    fixed rate, 15 minutes, omes commit pinned.
 2. A sampler (shell over SSH is enough): unit cgroups every second, every role's metrics port every 10 s.
@@ -639,6 +681,7 @@ hand-run frontend; you can explain every line of the configs you wrote (they bec
    bottleneck is designed in); the total fits the budget. Update the lab contract table.
 
 **Verify.**
+
 ```sh
 jq -e '.runs | length >= 6' internal/sizing/testdata/measure-*.json
 jq -e '.perShard | length == 3' internal/sizing/testdata/measure-*.json
@@ -647,6 +690,7 @@ jq -e '.s3FitVps03 != null' internal/sizing/testdata/measure-*.json      # the f
 ```
 
 **Pitfalls.**
+
 - Caps above the workstation's free memory are not an error anywhere: the kernel swaps or OOM-kills and the
   measurements are silently wrong. Check `free -m` on the workstation during every run.
 - Measure each role alone for its floor, and together for its share; the two answer different questions.
@@ -690,10 +734,11 @@ https://man.openbsd.org/sshd#SSH_KNOWN_HOSTS_FILE_FORMAT ; errgroup: https://pkg
 **Build.** `internal/remote` per TRD (dial, auth, host keys with `HostKeyAlgorithms` from the stored
 entries, keepalive, preflight, `Call` for helper ops, `Dial` for tunnels); the upload command as one constant;
 `make build-linux`; `test/helper` image and `make helper-test`; `tops version -e`; `--debug`. A test that the
-set of shell strings tops sends is exactly `uname -m` and the upload command (H2); a test that fails on
+set of shell strings tops sends is exactly `uname -m`, `sudo -n true`, the upload and the helper call (H2).
 `InsecureIgnoreHostKey` anywhere in the tree (H3).
 
 **Verify.**
+
 ```sh
 make helper-test                                   # hello over SSH; upload once; changed key refused; unknown key refused
 bin/tops -e lab version --json | jq -e 'all(.nodes[]; .helperSha256 | length == 16)'
@@ -721,6 +766,7 @@ that recomputes them from T2.1b's samples); `internal/datastore/postgres` read o
 through a tunnel; `tops capacity`.
 
 **Verify.**
+
 ```sh
 go test -race -cover ./internal/sizing/...     # golden per node shape: all roles, frontend+matching, pinned, too small, one history node
 bin/tops -e lab capacity --json | jq -e 'all(.nodes[]; (.roles | length) > 0) and .db.ok and .headroom.ok'
@@ -776,15 +822,15 @@ never point the harness at temporalScale.
 
 ### T2 acceptance
 
-| Check                                | Command                                                                                            |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| Detected sizes are the containers'   | `tops -e lab capacity --json \| jq -e '.nodes[] \| select(.name=="vps-03") \| .memory.source \| startswith("cgroup")'` |
-| Per-role limits for every listed role | `tops -e lab capacity --json \| jq -e '[.nodes[].roles[]] \| length == 10'` (4 + 4 + 2)          |
-| Plan lists every file, exit 2        | `tops -e lab plan; test $? -eq 2`                                                                  |
-| Plan changes nothing (H1)            | e2e `TestPlanTouchesNothing`: sha256 of `/etc/temporal`, `/opt/temporal`, `/var/lib/tops` before = after; `/run/tops` empty |
-| Helper uploaded once                 | second `tops -e lab plan --debug 2>&1 \| grep -c 'helper upload'` = 0                              |
-| Too-small node refused               | e2e: a temp env whose vps-03 pins `history.memoryMax` above what the cap leaves: `tops -e small plan --json \| jq -e '.refusals[0].code == "refused.node_too_small"'`; exit 3 (independent of the final caps) |
-| Unknown host key refused             | e2e: a node's line removed from a copy of `known_hosts`: exit 1 `ssh.host_key_unknown`            |
+| Check                                 | Command                                                                                                                                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Detected sizes are the containers'    | `tops -e lab capacity --json \| jq -e '.nodes[] \| select(.name=="vps-03") \| .memory.source \| startswith("cgroup")'`                                                                                        |
+| Per-role limits for every listed role | `tops -e lab capacity --json \| jq -e '[.nodes[].roles[]] \| length == 10'` (4 + 4 + 2)                                                                                                                       |
+| Plan lists every file, exit 2         | `tops -e lab plan; test $? -eq 2`                                                                                                                                                                             |
+| Plan changes nothing (H1)             | e2e `TestPlanTouchesNothing`: sha256 of `/etc/temporal`, `/opt/temporal`, `/var/lib/tops` before = after; `/run/tops` empty                                                                                   |
+| Helper uploaded once                  | second `tops -e lab plan --debug 2>&1 \| grep -c 'helper upload'` = 0                                                                                                                                         |
+| Too-small node refused                | e2e: a temp env whose vps-03 pins `history.memoryMax` above what the cap leaves: `tops -e small plan --json \| jq -e '.refusals[0].code == "refused.node_too_small"'`; exit 3 (independent of the final caps) |
+| Unknown host key refused              | e2e: a node's line removed from a copy of `known_hosts`: exit 1 `ssh.host_key_unknown`                                                                                                                        |
 
 # T3: bootstrap and status (v0.3.0)
 
@@ -964,18 +1010,18 @@ every frontend); e2e for the rows below.
 
 ### T3 acceptance
 
-| Check                                     | Command                                                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Fresh lab to healthy, < 5 min             | `make lab-reset && time tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.healthy and .temporal.shards.owned == 512'` |
-| Rings per role match the spec             | `tops -e lab status --json \| jq -e '(.temporal.rings.history.members \| length) == 2 and (.temporal.rings.matching.members \| length) == 3'` |
-| One unit per role                         | `ssh -F lab/keys/ssh_config vps-03 systemctl list-units 'temporal@*' --no-legend \| wc -l` = 2 |
-| Second plan clean                         | `tops -e lab plan; test $? -eq 0`                                                             |
-| Status exits 5 with a node down           | `docker stop vps-02; tops -e lab status; test $? -eq 5; docker start vps-02`                  |
-| Bootstrap refuses a used datastore        | `make lab-renew` (PostgreSQL kept); spec `cluster: other`; `tops -e lab bootstrap -y --json \| jq -e '.result == "refused"'`; exit 3 `refused.datastore_in_use` |
-| Bootstrap resumes                         | e2e: kill tops after the history stage; re-run exits 0 and starts only what is missing        |
-| Resume onto recreated nodes               | start a workflow; `make lab-renew`; `tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.healthy and .temporal.shards.owned == 512'`; the workflow completes; `tops -e lab ns --json` lists the namespaces unchanged |
-| `ns ensure` idempotent                    | `tops -e lab ns ensure -y && tops -e lab ns ensure -y --json \| jq -e '.result == "nothing"'` |
-| Lock refuses a second run                 | e2e: two `bootstrap` at once; one exits 3 `lock.held`                                          |
+| Check                              | Command                                                                                                                                                                                                                           |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fresh lab to healthy, < 5 min      | `make lab-reset && time tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.healthy and .temporal.shards.owned == 512'`                                                                                              |
+| Rings per role match the spec      | `tops -e lab status --json \| jq -e '(.temporal.rings.history.members \| length) == 2 and (.temporal.rings.matching.members \| length) == 3'`                                                                                     |
+| One unit per role                  | `ssh -F lab/keys/ssh_config vps-03 systemctl list-units 'temporal@*' --no-legend \| wc -l` = 2                                                                                                                                    |
+| Second plan clean                  | `tops -e lab plan; test $? -eq 0`                                                                                                                                                                                                 |
+| Status exits 5 with a node down    | `docker stop vps-02; tops -e lab status; test $? -eq 5; docker start vps-02`                                                                                                                                                      |
+| Bootstrap refuses a used datastore | `make lab-renew` (PostgreSQL kept); spec `cluster: other`; `tops -e lab bootstrap -y --json \| jq -e '.result == "refused"'`; exit 3 `refused.datastore_in_use`                                                                   |
+| Bootstrap resumes                  | e2e: kill tops after the history stage; re-run exits 0 and starts only what is missing                                                                                                                                            |
+| Resume onto recreated nodes        | start a workflow; `make lab-renew`; `tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.healthy and .temporal.shards.owned == 512'`; the workflow completes; `tops -e lab ns --json` lists the namespaces unchanged |
+| `ns ensure` idempotent             | `tops -e lab ns ensure -y && tops -e lab ns ensure -y --json \| jq -e '.result == "nothing"'`                                                                                                                                     |
+| Lock refuses a second run          | e2e: two `bootstrap` at once; one exits 3 `lock.held`                                                                                                                                                                             |
 
 # T4: change safely (v0.4.0)
 
@@ -1082,17 +1128,17 @@ check `git diff --numstat`.
 
 ### T4 acceptance
 
-| Check                                          | Command                                                                                    |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Hot key, no restart                            | set a `hot` frontend key; `tops -e lab apply -y --json \| jq -e '[.steps[] \| select(.action=="restart")] \| length == 0'` |
+| Check                                           | Command                                                                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hot key, no restart                             | set a `hot` frontend key; `tops -e lab apply -y --json \| jq -e '[.steps[] \| select(.action=="restart")] \| length == 0'`                  |
 | Restart key restarts each reader once, in order | set `history.cacheTTL`; `tops -e lab apply -y --json \| jq -e '[.steps[] \| select(.action=="restart") \| .role] == ["history","history"]'` |
-| Shards owned throughout                        | e2e samples ownership every 2 s; every dip below 512 recovers within 10 s                  |
-| Killing a node stops the rollout               | e2e `TestApplyStopsWhenNodeDies`: `docker kill vps-02` while vps-01 history restarts; exit 1; vps-02 untouched |
-| Rollback and undo                              | `tops -e lab rollback <id> -y && tops -e lab status && tops -e lab rollback <new id> -y && tops -e lab status` |
-| Lock refuses a second run; fencing             | e2e: two applies, one `lock.held`; a run past its lease gets `lock.lost`                   |
-| Drift                                          | edit a rendered file on vps-02; `tops -e lab drift; test $? -eq 2`; `tops -e lab apply -y`; `tops -e lab drift; test $? -eq 0` |
-| Promote                                        | `tops promote lab staging -y && tops diff lab staging; test $? -eq 0` (fixture fleet)       |
-| Store identity                                 | `postgres.host: 10.80.0.21` in a temp env: `tops -e bad plan --json \| jq -e '.refusals[0].code == "refused.store_identity"'` |
+| Shards owned throughout                         | e2e samples ownership every 2 s; every dip below 512 recovers within 10 s                                                                   |
+| Killing a node stops the rollout                | e2e `TestApplyStopsWhenNodeDies`: `docker kill vps-02` while vps-01 history restarts; exit 1; vps-02 untouched                              |
+| Rollback and undo                               | `tops -e lab rollback <id> -y && tops -e lab status && tops -e lab rollback <new id> -y && tops -e lab status`                              |
+| Lock refuses a second run; fencing              | e2e: two applies, one `lock.held`; a run past its lease gets `lock.lost`                                                                    |
+| Drift                                           | edit a rendered file on vps-02; `tops -e lab drift; test $? -eq 2`; `tops -e lab apply -y`; `tops -e lab drift; test $? -eq 0`              |
+| Promote                                         | `tops promote lab staging -y && tops diff lab staging; test $? -eq 0` (fixture fleet)                                                       |
+| Store identity                                  | `postgres.host: 10.80.0.21` in a temp env: `tops -e bad plan --json \| jq -e '.refusals[0].code == "refused.store_identity"'`               |
 
 # T5: look (v0.5.0)
 
@@ -1199,15 +1245,15 @@ is unreachable.
 
 ### T5 acceptance
 
-| Check                              | Command                                                                                 |
-| ---------------------------------- | --------------------------------------------------------------------------------------- |
-| Audit names the busy layer         | omes at the saturated rate; `tops -e lab audit --json \| jq -e '.closest != null'`       |
-| Audit healthy at the baseline      | omes at the reference rate; `tops -e lab audit --json \| jq -e '.verdict == "ok"'`       |
-| Per-role top                       | T5.1 verify                                                                             |
-| Logs merged                        | T5.2 verify                                                                             |
-| Profile saved and readable         | T5.4 verify                                                                             |
-| Investigate report                 | T5.5 verify                                                                             |
-| Targets                            | T5.6 verify                                                                             |
+| Check                         | Command                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| Audit names the busy layer    | omes at the saturated rate; `tops -e lab audit --json \| jq -e '.closest != null'` |
+| Audit healthy at the baseline | omes at the reference rate; `tops -e lab audit --json \| jq -e '.verdict == "ok"'` |
+| Per-role top                  | T5.1 verify                                                                        |
+| Logs merged                   | T5.2 verify                                                                        |
+| Profile saved and readable    | T5.4 verify                                                                        |
+| Investigate report            | T5.5 verify                                                                        |
+| Targets                       | T5.6 verify                                                                        |
 
 # T6: edges, UI, node and role changes (v0.6.0)
 
@@ -1313,13 +1359,13 @@ roles.
 
 ### T6 acceptance
 
-| Check                                  | Command                                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `/health` on frontend nodes            | `curl -fsS http://10.80.0.13/health`                                                       |
-| UI reachable                           | `curl -fsS -o /dev/null http://10.80.0.11/`                                                |
-| Remove and add                         | `tops -e lab node remove vps-03 -y`; delete it; `apply`; restore it; `tops -e lab node add vps-03 -y && tops -e lab status --json \| jq -e '(.temporal.rings.matching.members \| length) == 3'` |
-| Move matching                          | drop `matching` from vps-01; `apply`; `tops -e lab status --json \| jq -e '(.temporal.rings.matching.members \| length) == 2'`; add it back; `apply`; 3 again; shards owned throughout |
-| Last instance refused                  | worker only on vps-01; drop it: `tops -e lab plan; test $? -eq 3`                          |
+| Check                       | Command                                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/health` on frontend nodes | `curl -fsS http://10.80.0.13/health`                                                                                                                                                            |
+| UI reachable                | `curl -fsS -o /dev/null http://10.80.0.11/`                                                                                                                                                     |
+| Remove and add              | `tops -e lab node remove vps-03 -y`; delete it; `apply`; restore it; `tops -e lab node add vps-03 -y && tops -e lab status --json \| jq -e '(.temporal.rings.matching.members \| length) == 3'` |
+| Move matching               | drop `matching` from vps-01; `apply`; `tops -e lab status --json \| jq -e '(.temporal.rings.matching.members \| length) == 2'`; add it back; `apply`; 3 again; shards owned throughout          |
+| Last instance refused       | worker only on vps-01; drop it: `tops -e lab plan; test $? -eq 3`                                                                                                                               |
 
 # T7: upgrade (v0.7.0)
 
@@ -1370,14 +1416,14 @@ back via `yaml.Node`.
 
 ### T7 acceptance
 
-| Check                                   | Command                                                                                   |
-| --------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Bootstrap at the previous minor         | spec 1.30.x; `make lab-reset && tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.datastore.schemas.temporal == "1.18"'` |
-| Upgrade migrates once, rolls per role   | `tops -e lab upgrade 1.31.3 -y --backup-confirmed --json \| jq -e '.result == "ok"'`; schemas 1.19/1.14; every role on 1.31.3 |
-| Shards owned throughout                 | e2e sampling; every dip recovers within 10 s                                              |
-| Spec rewritten, comments kept           | `git diff --numstat environments/lab/cluster.yaml` = `1 1`                                 |
-| Skip and downgrade refused              | `tops -e lab upgrade 1.32.x …; test $? -eq 3`; `tops -e lab upgrade 1.30.x …; test $? -eq 3` |
-| Rollback keeps the schema               | `tops -e lab rollback <id> -y`; binaries 1.30.x, schema 1.19                               |
+| Check                                 | Command                                                                                                                                 |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap at the previous minor       | spec 1.30.x; `make lab-reset && tops -e lab bootstrap -y && tops -e lab status --json \| jq -e '.datastore.schemas.temporal == "1.18"'` |
+| Upgrade migrates once, rolls per role | `tops -e lab upgrade 1.31.3 -y --backup-confirmed --json \| jq -e '.result == "ok"'`; schemas 1.19/1.14; every role on 1.31.3           |
+| Shards owned throughout               | e2e sampling; every dip recovers within 10 s                                                                                            |
+| Spec rewritten, comments kept         | `git diff --numstat environments/lab/cluster.yaml` = `1 1`                                                                              |
+| Skip and downgrade refused            | `tops -e lab upgrade 1.32.x …; test $? -eq 3`; `tops -e lab upgrade 1.30.x …; test $? -eq 3`                                            |
+| Rollback keeps the schema             | `tops -e lab rollback <id> -y`; binaries 1.30.x, schema 1.19                                                                            |
 
 # T8: hardening (v1.0.0)
 
@@ -1561,26 +1607,26 @@ v1 suite on PostgreSQL.
 
 ### T10 acceptance
 
-| Check                         | Command                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------- |
-| Bootstrap on Cassandra + ES   | `make lab-reset V2=1 && tops -e lab-cass bootstrap -y && tops -e lab-cass status --json \| jq -e '.temporal.persistenceStore == "cassandra" and .temporal.visibilityStore == "elasticsearch"'` |
-| Datastore health              | `tops -e lab-cass status --json \| jq -e '.datastore.cassandra.quorum and .datastore.elasticsearch.status == "green"'` |
-| One Cassandra node lost       | `docker kill vps-cass-2`; status warns, exit 0; `docker start vps-cass-2`                      |
-| Keyspace change refused       | `keyspace: temporal_b`: `tops -e lab-cass plan --json \| jq -e '.refusals[0].code == "refused.immutable"'` |
-| RF change refused             | `replicationFactor: 1`: same                                                                   |
-| PostgreSQL suite still green  | `make e2e LAB=./lab`                                                                           |
+| Check                        | Command                                                                                                                                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bootstrap on Cassandra + ES  | `make lab-reset V2=1 && tops -e lab-cass bootstrap -y && tops -e lab-cass status --json \| jq -e '.temporal.persistenceStore == "cassandra" and .temporal.visibilityStore == "elasticsearch"'` |
+| Datastore health             | `tops -e lab-cass status --json \| jq -e '.datastore.cassandra.quorum and .datastore.elasticsearch.status == "green"'`                                                                         |
+| One Cassandra node lost      | `docker kill vps-cass-2`; status warns, exit 0; `docker start vps-cass-2`                                                                                                                      |
+| Keyspace change refused      | `keyspace: temporal_b`: `tops -e lab-cass plan --json \| jq -e '.refusals[0].code == "refused.immutable"'`                                                                                     |
+| RF change refused            | `replicationFactor: 1`: same                                                                                                                                                                   |
+| PostgreSQL suite still green | `make e2e LAB=./lab`                                                                                                                                                                           |
 
 ## CI
 
-| Job      | Steps                                                                  | Fails when                  |
-| -------- | ---------------------------------------------------------------------- | --------------------------- |
-| lint     | `make lint`; from T1.6 also the generator module                       | any finding (exists)        |
-| test     | `make test`; `make cover` from T1.10                                   | test, race, coverage gate   |
-| vuln     | `make vuln`                                                            | reachable vulnerability (exists) |
-| build    | linux/amd64, linux/arm64, darwin/arm64; 35 MB gate                     | build error, size (exists)  |
-| generate | `make generate` from T1.6                                              | catalog not reproducible    |
-| helper   | `make helper-test` from T2.3                                           | a helper test               |
-| release  | GoReleaser on tags from T1.10; `goreleaser release --snapshot --clean` on PRs | config error         |
+| Job      | Steps                                                                         | Fails when                       |
+| -------- | ----------------------------------------------------------------------------- | -------------------------------- |
+| lint     | `make lint`; from T1.6 also the generator module                              | any finding (exists)             |
+| test     | `make test`; `make cover` from T1.10                                          | test, race, coverage gate        |
+| vuln     | `make vuln`                                                                   | reachable vulnerability (exists) |
+| build    | linux/amd64, linux/arm64, darwin/arm64; 35 MB gate                            | build error, size (exists)       |
+| generate | `make generate` from T1.6                                                     | catalog not reproducible         |
+| helper   | `make helper-test` from T2.3                                                  | a helper test                    |
+| release  | GoReleaser on tags from T1.10; `goreleaser release --snapshot --clean` on PRs | config error                     |
 
 Lab e2e does not run in CI (PRD Q4); it gates releases.
 
@@ -1606,11 +1652,11 @@ release; README and CHANGELOG updated.
 
 ## What temporalScale can delete per release
 
-| tops release | temporalScale                                                                                  |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| P0 (no release) | Nothing; it can write `environments/lab/cluster.yaml` with roles and validate it with a local build |
-| v0.1.0       | Nothing; it gains `base/` and `environments/{lab,staging}/` and `tops -e lab validate` in its lint |
-| v0.3.0       | Nothing: tops builds and reads its `lab` environment on VPSLAB, but cannot change or roll it back yet |
-| v0.4.0       | Its bash lab (`lab/`, tscale 10.78.0.0/24) and every deploy script: `apply`, `rollback` and `drift` cover the change path |
-| v0.5.0       | Nothing: every bash script already went at v0.4.0                                              |
-| v1.0.0       | Nothing left; every runbook names tops commands only                                           |
+| tops release    | temporalScale                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| P0 (no release) | Nothing; it can write `environments/lab/cluster.yaml` with roles and validate it with a local build                       |
+| v0.1.0          | Nothing; it gains `base/` and `environments/{lab,staging}/` and `tops -e lab validate` in its lint                        |
+| v0.3.0          | Nothing: tops builds and reads its `lab` environment on VPSLAB, but cannot change or roll it back yet                     |
+| v0.4.0          | Its bash lab (`lab/`, tscale 10.78.0.0/24) and every deploy script: `apply`, `rollback` and `drift` cover the change path |
+| v0.5.0          | Nothing: every bash script already went at v0.4.0                                                                         |
+| v1.0.0          | Nothing left; every runbook names tops commands only                                                                      |

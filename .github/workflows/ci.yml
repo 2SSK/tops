@@ -74,23 +74,15 @@ jobs:
       - name: the catalog is up to date and byte-stable
         run: git diff --exit-code internal/catalog/
 
-  # The real SSH path against systemd containers (TRD "Testing": helper).
-  helper:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - run: make helper-test
-  helper:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - run: make helper-test
+# The real SSH path against systemd containers (TRD "Testing": helper).
+helper:
+  runs-on: ubuntu-24.04
+  steps:
+    - uses: actions/checkout@v5
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+    - run: make helper-test
 
   # The release config must keep working between releases; a snapshot publishes nothing.
   snapshot:

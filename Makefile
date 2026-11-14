@@ -5,7 +5,7 @@ LDFLAGS := -s -w -X github.com/2SSK/tops/internal/cli.Version=$(VERSION)
 # One Temporal version per supported minor; make generate writes catalog-<minor>.json.
 CATALOG_VERSIONS := $(shell cat tools/cataloggen/versions.txt)
 
-.PHONY: build build-linux test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset
+.PHONY: build build-linux test helper-test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/tops/
@@ -35,7 +35,7 @@ cover:
 vuln:
 	govulncheck ./...
 
-# The workstation binary also  builds for darwin: a Linux-only call must sit behind a build tag.
+# The workstation binary also builds for darwin: a Linux-only call must sit behind a build tag.
 cross:
 	GOOS=darwin GOARCH=arm64 go build ./...
 

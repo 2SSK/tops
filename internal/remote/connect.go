@@ -16,7 +16,7 @@ import (
 )
 
 // cmdUpload installs the helper from stdin, atomically: a half-written binary is never at
-// the path cmdHelper runs. The directory is hex we computed, so nothing is interploated.
+// the path cmdHelper runs. The directory is hex we computed, so nothing is interpolated.
 func cmdUpload(sha256 string) string {
 	return `sudo -n sh -c 'set -e; d=` + helperDir(sha256) + `; mkdir -p -m 0755 "$d"; cat > "$d/tops.$$"; chmod 0755 "$d/tops.$$"; mv "$d/tops.$$" "$d/tops"'`
 }
@@ -79,7 +79,7 @@ type Node struct {
 	Uploaded bool       // this run installed the helper
 }
 
-// Connect dials a ndoe, runs the preflight, and makes sure the helper of this exact build is
+// Connect dials a node, runs the preflight, and makes sure the helper of this exact build is
 // there, uploading it when it is not. req carries the run's id; its args are ignored.
 func (d *Dialer) Connect(ctx context.Context, name, address string, req wire.Request) (*Node, error) {
 	c, err := d.Dial(ctx, name, address)
@@ -127,7 +127,7 @@ func (d *Dialer) connect(ctx context.Context, c *Client, req wire.Request) (*Nod
 	return n, nil
 }
 
-// upload sends the helper binary on stdin to the one f ixed upload command.
+// upload sends the helper binary on stdin to the one fixed upload command.
 func (c *Client) upload(ctx context.Context, bin binary) error {
 	f, err := os.Open(bin.path)
 	if err != nil {

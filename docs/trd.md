@@ -400,14 +400,14 @@ cannot drift from its evidence. Re-measured for every new supported Temporal min
 
 ### Per role on a node
 
-| Item           | Value                                                                                                                                                                        |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit           | `temporal@<role>.service` from the template `temporal@.service`                                                                                                              |
+| Item           | Value                                                                                                                                                                                        |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit           | `temporal@<role>.service` from the template `temporal@.service`                                                                                                                              |
 | ExecStart      | `/opt/temporal/current/temporal-server --config-file /etc/temporal/%i.yaml --allow-no-auth start --service %i` (`--config-file` and repeatable `--service` verified in `cmd/server/main.go`) |
-| Server config  | `/etc/temporal/<role>.yaml`: shared persistence, membership, cluster metadata; this role's pool sizes, metrics address, pprof port, dynamic-config path                      |
-| Environment    | `/etc/temporal/temporal.env` (secrets, shared) and `/etc/temporal/<role>.env` (`GOMEMLIMIT`)                                                                                 |
-| Limits         | `/etc/systemd/system/temporal@<role>.service.d/limits.conf`: `MemoryHigh`, `MemoryMax`, `CPUWeight`                                                                          |
-| Dynamic config | `/etc/temporal/dynamicconfig-<role>.yaml`                                                                                                                                    |
+| Server config  | `/etc/temporal/<role>.yaml`: shared persistence, membership, cluster metadata; this role's pool sizes, metrics address, pprof port, dynamic-config path                                      |
+| Environment    | `/etc/temporal/temporal.env` (secrets, shared) and `/etc/temporal/<role>.env` (`GOMEMLIMIT`)                                                                                                 |
+| Limits         | `/etc/systemd/system/temporal@<role>.service.d/limits.conf`: `MemoryHigh`, `MemoryMax`, `CPUWeight`                                                                                          |
+| Dynamic config | `/etc/temporal/dynamicconfig-<role>.yaml`                                                                                                                                                    |
 
 The worker role reaches frontends through `publicClient.hostPort`; on a node without a frontend it is the
 first frontend node's `<address>:7233`. Whether 1.31 still requires it or resolves frontends through
@@ -470,7 +470,7 @@ prints `not validated: 1.31.3 not staged` and does not fail.
    one fixed shell string, binary on stdin (`<sha16>` is `[0-9a-f]{16}`, so nothing is interpolated):
 
    ```
-   sudo -n sh -c 'set -e; d=/usr/local/lib/tops/<sha16>; mkdir -p -m 0755 "$d"; cat > "$d/tops.tmp"; chmod 0755 "$d/tops.tmp"; mv "$d/tops.tmp" "$d/tops"'
+   sudo -n sh -c 'set -e; d=/usr/local/lib/tops/<sha16>; mkdir -p -m 0755 "$d"; cat > "$d/tops.$$"; chmod 0755 "$d/tops.$$"; mv "$d/tops.$$" "$d/tops"'
    ```
 
    then `hello` again; it reports its own sha256, which must match. Keep the newest 3 directories.
@@ -665,7 +665,7 @@ Re-running resumes: completed steps are detected (schema version, `current` per 
 | Feature               | Design                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `apply --at HH:MM`    | The plan is computed without the lock, shown and confirmed now; its inputs (spec hash, base and overrides hash, per-node facts hash) are kept in the process. tops waits on the workstation; at the time it locks, re-plans, compares input hashes, and refuses (`refused.plan_stale`) if any changed, else applies without asking. A time already passed today is refused. No node-side timers (D1); the host running it must stay up |
-| `run <role> --node N` | Refused unless `temporal@<role>` is inactive (`refused.role_running`). Streaming helper op runs `temporal-server --config-file /etc/temporal/<role>.yaml --allow-no-auth start --service <role>` as `temporal` with the role's environment and limits (`systemd-run --scope`), output streamed until Ctrl-C (stdin EOF kills it). Never enables the unit                                                                                               |
+| `run <role> --node N` | Refused unless `temporal@<role>` is inactive (`refused.role_running`). Streaming helper op runs `temporal-server --config-file /etc/temporal/<role>.yaml --allow-no-auth start --service <role>` as `temporal` with the role's environment and limits (`systemd-run --scope`), output streamed until Ctrl-C (stdin EOF kills it). Never enables the unit                                                                               |
 
 ## v2: Cassandra and Elasticsearch
 
@@ -722,7 +722,7 @@ write a run log.
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Sudo          | Passwordless sudo, helper as root (D9); sudo logs the op name; every mutating run leaves a history record                                                                                                                                          |
 | Host identity | Strict known_hosts; no TOFU                                                                                                                                                                                                                        |
-| Shell         | Exactly two fixed strings: `uname -m` and the helper upload; no value from the spec is ever interpolated                                                                                                                                           |
+| Shell         | Exactly `uname -m`, `sudo -n true`, the upload and the helper call (H2).                                                                                                                                                                           |
 | Secrets       | `environments/<env>/secrets.env` 0600, untracked; in transit only on helper stdin; on nodes only `temporal.env` (0600) and its snapshots; masked in diffs; hashes only in history; never in argv (schema tools get them through their environment) |
 | Binaries      | Workstation fetches `checksums.txt` over TLS; the node verifies the sha256 before extracting                                                                                                                                                       |
 | Unit sandbox  | `temporal@.service`: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `ReadWritePaths=/var/lib/temporal`; `temporal-ui.service`: `DynamicUser=yes`                                                                          |
