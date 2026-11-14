@@ -12,9 +12,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/2SSK/tops/internal/wire"
 )
@@ -30,9 +34,10 @@ func TestCmdUpload(t *testing.T) {
 // fakeNode plays Ubuntu 24.04 with sudo, sh and whatever helpers were uploaded: the upload
 // command stores stdin's sha256, and an installed helper answers hello with it.
 type fakeNode struct {
-	machine string
-	lie     string // a sha256 hello reports instead of the real one
-	failSh  bool   // the upload's sh fails (disk full)
+	machine    string
+	lie        string // a sha256 hello reports instead of the real one
+	failSh     bool   // the upload's sh fails (disk full)
+	beforeArch func() // runs before uname -m answers, outside the lock
 
 	mu        sync.Mutex
 	installed map[string]string // sha16 -> sha256 of the bytes uploaded
@@ -41,37 +46,50 @@ type fakeNode struct {
 var helperPath = regexp.MustCompile(`^sudo -n /usr/local/lib/tops/([0-9a-f]{16})/tops node hello$`)
 
 func (f *fakeNode) exec(cmd string, stdin io.Reader, stdout, stderr io.Writer) uint32 {
+	if cmd == cmdArch && f.beforeArch != nil {
+		f.beforeArch()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	switch {
 	case cmd == cmdArch || cmd == cmdSudo:
 		return ubuntu(f.machine, true)(cmd, stdin, stdout, stderr)
 	case strings.HasPrefix(cmd, "sudo -n sh -c "):
-		h := sha256.New()
-		_, _ = io.Copy(h, stdin)
-		sum := hex.EncodeToString(h.Sum(nil))
-		if f.failSh || cmd != cmdUpload(sum) {
-			_, _ = io.WriteString(stderr, "sh: 1: cannot create /usr/local/lib/tops/x/tops.tmp: No space left on device\n")
-			return 2
-		}
-		f.installed[sum[:16]] = sum
-		return 0
+		return f.upload(cmd, stdin, stderr)
 	case helperPath.MatchString(cmd):
-		_, _ = io.Copy(io.Discard, stdin)
-		sum, ok := f.installed[helperPath.FindStringSubmatch(cmd)[1]]
-		if !ok {
-			_, _ = io.WriteString(stderr, "sudo: "+strings.Fields(cmd)[2]+": command not found\n")
-			return 1
-		}
-		if f.lie != "" {
-			sum = f.lie
-		}
-		res, _ := json.Marshal(wire.Hello{Hostname: "vps-01", SHA256: sum})
-		_ = json.NewEncoder(stdout).Encode(wire.Response{OK: true, Result: res})
-		return 0
+		return f.hello(cmd, stdin, stdout, stderr)
 	}
 	_, _ = io.WriteString(stderr, "sh: 1: unexpected command\n")
 	return 127
+}
+
+// upload plays sh running the upload command: it installs stdin under its sha256.
+func (f *fakeNode) upload(cmd string, stdin io.Reader, stderr io.Writer) uint32 {
+	h := sha256.New()
+	_, _ = io.Copy(h, stdin)
+	sum := hex.EncodeToString(h.Sum(nil))
+	if f.failSh || cmd != cmdUpload(sum) {
+		_, _ = io.WriteString(stderr, "sh: 1: cannot create /usr/local/lib/tops/x/tops.1234: No space left on device\n")
+		return 2
+	}
+	f.installed[sum[:16]] = sum
+	return 0
+}
+
+// hello plays sudo running an installed helper's hello, or failing to find it.
+func (f *fakeNode) hello(cmd string, stdin io.Reader, stdout, stderr io.Writer) uint32 {
+	_, _ = io.Copy(io.Discard, stdin)
+	sum, ok := f.installed[helperPath.FindStringSubmatch(cmd)[1]]
+	if !ok {
+		_, _ = io.WriteString(stderr, "sudo: "+strings.Fields(cmd)[2]+": command not found\n")
+		return 1
+	}
+	if f.lie != "" {
+		sum = f.lie
+	}
+	res, _ := json.Marshal(wire.Hello{Hostname: "vps-01", SHA256: sum})
+	_ = json.NewEncoder(stdout).Encode(wire.Response{OK: true, Result: res})
+	return 0
 }
 
 // helperFile writes a stand-in helper binary and returns its path and sha256.
@@ -299,5 +317,109 @@ func TestBinaryFor(t *testing.T) {
 		if err != nil || got != tt.want {
 			t.Errorf("binaryFor(%s/%s, %s) = %q, %v; want %q", tt.goos, tt.goarch, tt.arch, got, err, tt.want)
 		}
+	}
+}
+
+// testFleet is n fake nodes sharing one ssh.port at 127.0.0.1, .2, …, and a Dialer that knows
+// all their host keys and uploads a stand-in helper.
+type testFleet struct {
+	d       *Dialer
+	nodes   []*fakeNode
+	srvs    []*testServer
+	targets []Target
+}
+
+func newFleet(t *testing.T, machines ...string) *testFleet {
+	t.Helper()
+	keyPath, clientKey := writeKey(t, false, 0o600)
+	f := &testFleet{}
+	var lines []string
+	listen := "127.0.0.1:0"
+	for i, m := range machines {
+		node := &fakeNode{machine: m, installed: map[string]string{}}
+		host := hostSigner(t, "ed25519")
+		srv := startServerAt(t, listen, clientKey, node.exec, host)
+		addr := "127.0.0." + strconv.Itoa(i+1)
+		listen = addr[:len(addr)-1] + strconv.Itoa(i+2) + ":" + strconv.Itoa(srv.port) // the next node, same port
+		lines = append(lines, knownhosts.Line([]string{"[" + addr + "]:" + strconv.Itoa(srv.port)}, host.PublicKey()))
+		f.nodes, f.srvs = append(f.nodes, node), append(f.srvs, srv)
+		f.targets = append(f.targets, Target{Name: "vps-0" + strconv.Itoa(i+1), Address: addr})
+	}
+	d, err := NewDialer(t.Context(), Config{User: "deploy", Port: f.srvs[0].port, Key: keyPath, KnownHosts: writeKnownHosts(t, lines...)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	d.exe, _ = helperFile(t, t.TempDir(), "tops", "helper build 1")
+	d.goos, d.goarch = "linux", "amd64"
+	f.d = d
+	return f
+}
+
+func TestConnectAll(t *testing.T) {
+	f := newFleet(t, "x86_64", "x86_64", "x86_64")
+	nodes, err := f.d.ConnectAll(t.Context(), f.targets, wire.Request{RunID: "r-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for _, n := range nodes {
+			_ = n.Close()
+		}
+	})
+	for i, n := range nodes {
+		if n.Node != f.targets[i].Name || !n.Uploaded {
+			t.Errorf("nodes[%d] = %s uploaded=%v, want %s uploaded", i, n.Node, n.Uploaded, f.targets[i].Name)
+		}
+		if got := len(f.srvs[i].commands()); got != 5 {
+			t.Errorf("%s ran %d commands, want the 5 of a bare node", n.Node, got)
+		}
+	}
+	if len(f.d.bins) != 1 {
+		t.Errorf("hashed %d helpers, want the one amd64 build once", len(f.d.bins))
+	}
+}
+
+// TestConnectAllInParallel: every node's uname -m waits until all three nodes are in it. In
+// sequence the first would wait for the others forever, so the test would time out.
+func TestConnectAllInParallel(t *testing.T) {
+	f := newFleet(t, "x86_64", "x86_64", "x86_64")
+	var arrived sync.WaitGroup
+	arrived.Add(len(f.nodes))
+	for _, n := range f.nodes {
+		n.beforeArch = func() {
+			arrived.Done()
+			arrived.Wait()
+		}
+	}
+	done := make(chan error, 1)
+	go func() {
+		nodes, err := f.d.ConnectAll(t.Context(), f.targets, wire.Request{RunID: "r-1"})
+		for _, n := range nodes {
+			_ = n.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ConnectAll connects one node at a time")
+	}
+}
+
+// TestConnectAllFirstFailureInOrder: vps-02 fails slowly (preflight), vps-03 fast (nothing
+// listens), and the error names vps-02 because it comes first in the spec.
+func TestConnectAllFirstFailureInOrder(t *testing.T) {
+	f := newFleet(t, "x86_64", "riscv64")
+	f.targets = append(f.targets, Target{Name: "vps-03", Address: "127.0.0.3"})
+	nodes, err := f.d.ConnectAll(t.Context(), f.targets, wire.Request{RunID: "r-1"})
+	if nodes != nil {
+		t.Errorf("nodes = %v, want none on failure", nodes)
+	}
+	if ue := userError(t, err, "helper.no_binary"); !strings.Contains(ue.What, "vps-02") {
+		t.Errorf("What = %q, want vps-02, the first failure in spec order", ue.What)
 	}
 }

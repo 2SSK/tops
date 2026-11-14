@@ -58,6 +58,13 @@ func hostSigner(t *testing.T, kind string) ssh.Signer {
 // startServer listens on 127.0.0.1 and accepts only the client key allowed.
 func startServer(t *testing.T, allowed ssh.PublicKey, exec execFunc, hostKeys ...ssh.Signer) *testServer {
 	t.Helper()
+	return startServerAt(t, "127.0.0.1:0", allowed, exec, hostKeys...)
+}
+
+// startServerAt listens on listen ("127.0.0.2:2222"): a fleet's nodes share ssh.port, so
+// several test nodes listen on one port at different loopback addresses.
+func startServerAt(t *testing.T, listen string, allowed ssh.PublicKey, exec execFunc, hostKeys ...ssh.Signer) *testServer {
+	t.Helper()
 	s := &testServer{hostKeys: hostKeys, exec: exec}
 	cfg := &ssh.ServerConfig{
 		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
@@ -70,7 +77,7 @@ func startServer(t *testing.T, allowed ssh.PublicKey, exec execFunc, hostKeys ..
 	for _, k := range hostKeys {
 		cfg.AddHostKey(k)
 	}
-	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", listen)
 	if err != nil {
 		t.Fatal(err)
 	}

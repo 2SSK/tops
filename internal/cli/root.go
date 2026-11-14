@@ -14,10 +14,11 @@ type Options struct {
 	NoColor bool
 	Env     string
 
-	Getenv  func(string) string
-	Getwd   func() (string, error)
-	Geteuid func() int
-	Node    helper.Host // the matchine tops node reads
+	Getenv     func(string) string
+	Getwd      func() (string, error)
+	Geteuid    func() int
+	Node       helper.Host                       // the matchine tops node reads
+	Passphrase func(path string) ([]byte, error) // asks for ssh.key's passphrase; nil without a terminal
 }
 
 // NewRootCommand returns the tops root command with all subcommands attached.

@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+// TestGlobalFlags parses the global flags around help, which reads nothing: version with -e
+// now connects to the nodes.
 func TestGlobalFlags(t *testing.T) {
 	type flags struct {
 		JSON    bool
@@ -17,12 +19,12 @@ func TestGlobalFlags(t *testing.T) {
 		args []string
 		want flags
 	}{
-		{"no flags", []string{"version"}, flags{}},
-		{"json before command", []string{"--json", "version"}, flags{JSON: true}},
-		{"json after command", []string{"version", "--json"}, flags{JSON: true}},
-		{"no-color", []string{"version", "--no-color"}, flags{NoColor: true}},
-		{"env", []string{"-e", "lab", "version"}, flags{Env: "lab"}},
-		{"env long", []string{"version", "--env", "lab"}, flags{Env: "lab"}},
+		{"no flags", []string{"help"}, flags{}},
+		{"json before command", []string{"--json", "help"}, flags{JSON: true}},
+		{"json after command", []string{"help", "--json"}, flags{JSON: true}},
+		{"no-color", []string{"help", "--no-color"}, flags{NoColor: true}},
+		{"env", []string{"-e", "lab", "help"}, flags{Env: "lab"}},
+		{"env long", []string{"help", "--env", "lab"}, flags{Env: "lab"}},
 	}
 
 	for _, tt := range tests {

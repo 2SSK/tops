@@ -2,10 +2,25 @@ package cli
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+
+	"github.com/2SSK/tops/internal/remote"
+	"github.com/2SSK/tops/internal/term"
 )
 
 func TestNewBuildInfo(t *testing.T) {
@@ -91,5 +106,119 @@ func TestVersionJSON(t *testing.T) {
 	}
 	if doc.Kind != "Version" || doc.TopsVersion != "dev" || doc.Tops.Version != "dev" {
 		t.Errorf("document = %+v", doc)
+	}
+}
+
+func TestWriteNodeVersions(t *testing.T) {
+	sum := "c1d975b4e54a0326" + strings.Repeat("0", 48)
+	vs := nodeVersions([]*remote.Node{
+		{Client: &remote.Client{Node: "vps-01"}, SHA256: sum, Uploaded: true},
+		{Client: &remote.Client{Node: "vps-100"}, SHA256: sum},
+	})
+	var out bytes.Buffer
+	if err := writeNodeVersions(&out, vs); err != nil {
+		t.Fatal(err)
+	}
+	want := "vps-01   helper c1d975b4e54a0326  uploaded\n" +
+		"vps-100  helper c1d975b4e54a0326  present\n"
+	if out.String() != want {
+		t.Errorf("output =\n%s\nwant\n%s", out.String(), want)
+	}
+	b, err := json.Marshal(vs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(b); got != `{"name":"vps-01","helperSha256":"c1d975b4e54a0326","uploaded":true}` {
+		t.Errorf("json = %s", got)
+	}
+}
+
+func TestNewRequest(t *testing.T) {
+	now := time.Date(2026, 10, 23, 15, 30, 12, 0, time.FixedZone("IST", 5*3600+1800))
+	req := newRequest(&Options{Getenv: func(k string) string { return map[string]string{"USER": "ssk"}[k] }}, now)
+	if !regexp.MustCompile(`^r-20261023T100012Z-[0-9a-f]{4}$`).MatchString(req.RunID) {
+		t.Errorf("run id = %q, want the UTC time and 4 hex digits", req.RunID)
+	}
+	if !strings.HasPrefix(req.By, "ssk@") {
+		t.Errorf("by = %q, want ssk@<host>", req.By)
+	}
+	if other := newRequest(&Options{Getenv: func(string) string { return "" }}, now); other.RunID == req.RunID {
+		t.Errorf("two runs in the same second share the id %s", req.RunID) // 1 in 65536
+	}
+}
+
+// versionEnv writes a fleet whose two nodes, at 127.0.0.1 and 127.0.0.2, listen on nothing at
+// port, with a real key and an empty known_hosts, and returns its root.
+func versionEnv(t *testing.T, port int) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "environments", "qa")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, err := ssh.MarshalPrivateKey(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cluster := strings.NewReplacer(
+		"ssh: { user: deploy }", fmt.Sprintf("ssh: { user: deploy, port: %d, key: id_ed25519, knownHosts: known_hosts }", port),
+		"10.80.0.11", "127.0.0.1",
+		"10.80.0.12", "127.0.0.2",
+	).Replace(validSpec)
+	files := map[string]string{
+		"id_ed25519":   string(pem.EncodeToMemory(block)),
+		"known_hosts":  "# no nodes yet\n",
+		"cluster.yaml": cluster,
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSecrets(t, dir)
+	return root
+}
+
+// TestVersionEnvUnreachable: with -e, version connects to every node, and a node it cannot
+// reach fails the command naming the first such node in the spec.
+func TestVersionEnvUnreachable(t *testing.T) {
+	l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close() // nothing listens there now
+	_, err = run(t, versionEnv(t, port), "-e", "qa", "version")
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "ssh.unreachable" || !strings.Contains(ue.What, "vps-01") {
+		t.Fatalf("err = %#v, want ssh.unreachable naming vps-01, the first node", err)
+	}
+	if got := term.ExitCode(err); got != 1 {
+		t.Errorf("exit code = %d, want 1", got)
+	}
+}
+
+// TestVersionEnvNoKnownHosts: ssh settings are checked before any node is dialled.
+func TestVersionEnvNoKnownHosts(t *testing.T) {
+	root := versionEnv(t, 22)
+	if err := os.Remove(filepath.Join(root, "environments", "qa", "known_hosts")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := run(t, root, "-e", "qa", "version")
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "ssh.host_key_unknown" {
+		t.Fatalf("err = %#v, want ssh.host_key_unknown for the missing file", err)
+	}
+}
+
+func TestVersionEnvUnknownEnv(t *testing.T) {
+	_, err := run(t, fixtureFleet(t), "-e", "nope", "version")
+	var ue *term.UserError
+	if !errors.As(err, &ue) || ue.Code != "spec.no_env" {
+		t.Fatalf("err = %#v, want spec.no_env", err)
 	}
 }

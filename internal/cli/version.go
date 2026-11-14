@@ -2,10 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
+	"github.com/2SSK/tops/internal/remote"
 	"github.com/2SSK/tops/internal/term"
 )
 
@@ -37,9 +39,45 @@ type buildInfo struct {
 
 // versionDocument is the --json result of tops version.
 type versionDocument struct {
-	Kind        string    `json:"kind"`
-	TopsVersion string    `json:"topsVersion"`
-	Tops        buildInfo `json:"tops"`
+	Kind        string        `json:"kind"`
+	TopsVersion string        `json:"topsVersion"`
+	Env         string        `json:"env,omitempty"`
+	Cluster     string        `json:"cluster,omitempty"`
+	Tops        buildInfo     `json:"tops"`
+	Nodes       []nodeVersion `json:"nodes,omitempty"`
+}
+
+// nodeVersion is the helper one node runs: always this build, since connecting uploads it.
+type nodeVersion struct {
+	Name         string `json:"name"`
+	HelperSHA256 string `json:"helperSha256"` // first 16 hex digits: the directory on the node
+	Uploaded     bool   `json:"uploaded"`     // by this run
+}
+
+func nodeVersions(nodes []*remote.Node) []nodeVersion {
+	vs := make([]nodeVersion, len(nodes))
+	for i, n := range nodes {
+		vs[i] = nodeVersion{Name: n.Node, HelperSHA256: n.SHA256[:16], Uploaded: n.Uploaded}
+	}
+	return vs
+}
+
+// writeNodeVersions prints "vps-01 helper c1d975b4e54a0326 uploaded", names aligned.
+func writeNodeVersions(w io.Writer, vs []nodeVersion) error {
+	width := 0
+	for _, v := range vs {
+		width = max(width, len(v.Name))
+	}
+	for _, v := range vs {
+		state := "present"
+		if v.Uploaded {
+			state = "uploaded"
+		}
+		if _, err := fmt.Fprintf(w, "%-*s  helper %s  %s\n", width, v.Name, v.HelperSHA256, state); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // newBuildInfo reads the commit and Go version from bi. go run and go test
@@ -77,12 +115,26 @@ func newVersionCommand(opts *Options) *cobra.Command {
 		GroupID: "integrate",
 		Args:    usageArgs(cobra.NoArgs),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			info := newBuildInfo(debug.ReadBuildInfo())
-			if opts.JSON {
-				return term.WriteJSON(cmd.OutOrStdout(), versionDocument{Kind: "Version", TopsVersion: Version, Tops: info})
+			doc := versionDocument{Kind: "Version", TopsVersion: Version, Tops: newBuildInfo(debug.ReadBuildInfo())}
+			if opts.Env != "" { // with -e: connect, which uploads the helper where it is missing
+				env, err := loadEnv(cmd, opts)
+				if err != nil {
+					return err
+				}
+				c, err := connect(cmd.Context(), opts, env)
+				if err != nil {
+					return err
+				}
+				defer c.Close()
+				doc.Env, doc.Cluster, doc.Nodes = env.Name, env.Cluster.Cluster, nodeVersions(c.nodes)
 			}
-			_, err := fmt.Fprintln(cmd.OutOrStdout(), info)
-			return err
+			if opts.JSON {
+				return term.WriteJSON(cmd.OutOrStdout(), doc)
+			}
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), doc.Tops); err != nil {
+				return err
+			}
+			return writeNodeVersions(cmd.OutOrStdout(), doc.Nodes)
 		},
 	}
 }

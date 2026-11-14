@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/2SSK/tops/internal/term"
 	"github.com/2SSK/tops/internal/wire"
 )
@@ -139,4 +141,42 @@ func (c *Client) upload(ctx context.Context, bin binary) error {
 		return fmt.Errorf("upload the helper to %s: %w: %s", c.Node, err, bytes.TrimSpace(stderr.Bytes()))
 	}
 	return nil
+}
+
+// Target is one node to connect to: its spec name and address.
+type Target struct {
+	Name    string
+	Address string
+}
+
+// connectLimit bounds the connects in flight, so a large fleet does not open every SSH
+// connection and upload at once (TRD "Parallelism").
+const connectLimit = 8
+
+// ConnectAll connects to every target in parallel. When any fails it closes the ones that
+// connected and returns the first failure in targets' order, so the same broken fleet always
+// names the same node. The nodes come back in targets' order.
+func (d *Dialer) ConnectAll(ctx context.Context, targets []Target, req wire.Request) ([]*Node, error) {
+	nodes := make([]*Node, len(targets))
+	errs := make([]error, len(targets))
+	var g errgroup.Group
+	g.SetLimit(connectLimit)
+	for i, t := range targets {
+		g.Go(func() error {
+			nodes[i], errs[i] = d.Connect(ctx, t.Name, t.Address, req)
+			return nil // every node gets its own answer; one failure does not cancel the rest
+		})
+	}
+	_ = g.Wait()
+	for _, err := range errs {
+		if err != nil {
+			for _, n := range nodes {
+				if n != nil {
+					_ = n.Close()
+				}
+			}
+			return nil, err
+		}
+	}
+	return nodes, nil
 }
