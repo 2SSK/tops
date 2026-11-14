@@ -1,0 +1,10 @@
+#!/bin/sh
+# systemd needs to write its own cgroup tree. Docker 29 can mount it writable
+# (writable-cgroups); older ones, like CI's, mount it read-only. The container has its own
+# cgroup namespace, so remounting it writes only the container's subtree, never the host's.
+set -e
+if ! touch /sys/fs/cgroup/.rw 2>/dev/null; then
+	mount -o remount,rw /sys/fs/cgroup
+fi
+rm -f /sys/fs/cgroup/.rw
+exec /sbin/init

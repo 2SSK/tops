@@ -75,12 +75,22 @@ func startContainer(t *testing.T) *container {
 	}
 	sum := sha256.Sum256(b)
 
-	id := docker(t, nil, "run", "--detach", "--rm",
-		"--cgroupns", "private", "--security-opt", "writable-cgroups=true", "--cap-add", "SYS_ADMIN",
+	// Never --privileged: it hands the container the host's devices, and systemd inside takes
+	// over the host's terminals. SYS_ADMIN without AppArmor's mount rule lets the image's init
+	// remount its own cgroup namespace writable on docker versions that mount it read-only.
+	id := docker(t, nil, "run", "--detach", "--tty", // tty: systemd's boot log in docker logs
+		"--cgroupns", "private", "--cap-add", "SYS_ADMIN", "--security-opt", "apparmor=unconfined",
 		"--tmpfs", "/run", "--tmpfs", "/run/lock",
 		"--memory", "1g", "--cpus", "1.5",
 		"--publish", "127.0.0.1::22", image)
-	t.Cleanup(func() { _ = exec.Command("docker", "rm", "--force", id).Run() }) //nolint:noctx,gosec // t.Context is done by then
+	t.Cleanup(func() {
+		if t.Failed() { // the container's state and systemd's boot log say why a node never came up
+			state, _ := exec.Command("docker", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}} {{.State.Error}}", id).Output() //nolint:noctx,gosec // t.Context is done by then
+			logs, _ := exec.Command("docker", "logs", "--tail", "30", id).CombinedOutput()                                                        //nolint:noctx,gosec // t.Context is done by then
+			t.Logf("container %s: %s%s", id[:12], state, logs)
+		}
+		_ = exec.Command("docker", "rm", "--force", id).Run() //nolint:noctx,gosec // t.Context is done by then
+	})
 
 	keyPath, clientKey := writeKey(t, false, 0o600)
 	docker(t, ssh.MarshalAuthorizedKey(clientKey), "exec", "-i", id, "sh", "-c",

@@ -9,6 +9,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends systemd systemd-sysv dbus openssh-server sudo \
     && rm -rf /var/lib/apt/lists/*
 
+# No consoles and no logins on terminals: a test node is only ever reached over SSH, and a
+# container that reached the host's terminals must not take one over.
+RUN systemctl mask getty.target console-getty.service getty@.service serial-getty@.service \
+        systemd-logind.service systemd-vconsole-setup.service
+
 RUN userdel -r ubuntu \
     && useradd --create-home --shell /bin/bash deploy \
     && echo 'deploy ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/deploy \
@@ -18,6 +23,8 @@ RUN userdel -r ubuntu \
     && ssh-keygen -A \
     && systemd-machine-id-setup
 
+COPY init /usr/local/sbin/init
+
 STOPSIGNAL SIGRTMIN+3
 
-CMD ["/sbin/init"]
+ENTRYPOINT ["/usr/local/sbin/init"]
