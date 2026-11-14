@@ -1,17 +1,29 @@
 BIN := bin/tops
 VERSION ?= $(shell git describe --tags --always --dirty)
+LDFLAGS := -s -w -X github.com/2SSK/tops/internal/cli.Version=$(VERSION)
 
 # One Temporal version per supported minor; make generate writes catalog-<minor>.json.
 CATALOG_VERSIONS := $(shell cat tools/cataloggen/versions.txt)
 
-.PHONY: build test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset
+.PHONY: build build-linux test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset
 
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X github.com/2SSK/tops/internal/cli.Version=$(VERSION)" -o $(BIN) ./cmd/tops/
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/tops/
+
+# The helpers a workstation of another OS or arch uploads: tops looks for them beside itself.
+build-linux:
+	for arch in amd64 arm64; do \
+		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o bin/tops-linux-$$arch ./cmd/tops || exit 1; \
+	done
 
 test:
 	go test -race -coverprofile=coverage.out ./...
 	go -C tools/cataloggen test -race ./...
+
+# The real SSH path against systemd containers: needs docker. The tests start and remove them.
+helper-test: build
+	docker build --quiet --tag tops-helper-test test/helper
+	go test -tags helper -count=1 -run '^TestHelper' ./internal/remote/
 
 lint:
 	golangci-lint run
@@ -23,7 +35,7 @@ cover:
 vuln:
 	govulncheck ./...
 
-E The workstation binary also  builds for darwin: a Linux-only call must sit behind a build tag.
+# The workstation binary also  builds for darwin: a Linux-only call must sit behind a build tag.
 cross:
 	GOOS=darwin GOARCH=arm64 go build ./...
 
@@ -42,7 +54,7 @@ LAB_PG := docker compose --env-file $(LAB_SECRETS) -f test/e2e/postgres.compose.
 
 $(LAB_SECRETS):
 	mkdir -p $(@D)
-	(unmask 077 && printf 'TOPS_PG_PASSWORD=%s\n' "$$(openssl rand -hex 24)" > $@)
+	(umask 077 && printf 'TOPS_PG_PASSWORD=%s\n' "$$(openssl rand -hex 24)" > $@)
 
 lab-up: $(LAB_SECRETS)
 	cp test/e2e/vpslab.override.yaml lab/compose.override.yaml
