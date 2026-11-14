@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,15 +33,22 @@ type Config struct {
 
 // Dialer holds what every node of a run shares: the host keys and the identity.
 type Dialer struct {
-	cfg       Config
-	hosts     knownHosts
-	id        identity
-	timeout   time.Duration
-	keepalive time.Duration
+	cfg               Config
+	hosts             knownHosts
+	id                identity
+	timeout           time.Duration
+	keepalive         time.Duration
+	exe, goos, goarch string // this executable and its platform: the helper on a matching node
+	mu                sync.Mutex
+	bins              map[string]binary // by GOARCH, hashed once per run
 }
 
-// NewDialer reads known_hsots and the identity once per run. Close it when the run ends.
+// NewDialer reads known_hosts and the identity once per run. Close it when the run ends.
 func NewDialer(ctx context.Context, cfg Config) (*Dialer, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("find this executable: %w", err)
+	}
 	hosts, err := loadKnownHosts(cfg.KnownHosts)
 	if err != nil {
 		return nil, err
@@ -48,7 +57,9 @@ func NewDialer(ctx context.Context, cfg Config) (*Dialer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Dialer{cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval}, nil
+	return &Dialer{
+		cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval, exe: exe, goos: runtime.GOOS, goarch: runtime.GOARCH, bins: map[string]binary{},
+	}, nil
 }
 
 // Close releases the identity (the agent connection).
