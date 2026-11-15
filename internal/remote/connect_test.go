@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -89,6 +91,7 @@ func (f *fakeNode) hello(cmd string, stdin io.Reader, stdout, stderr io.Writer) 
 	}
 	res, _ := json.Marshal(wire.Hello{Hostname: "vps-01", SHA256: sum})
 	_ = json.NewEncoder(stdout).Encode(wire.Response{OK: true, Result: res})
+	_, _ = io.WriteString(stderr, `{"level":"INFO","msg":"op done","op":"hello","result":"ok"}`+"\n") // the helper's own log
 	return 0
 }
 
@@ -421,5 +424,41 @@ func TestConnectAllFirstFailureInOrder(t *testing.T) {
 	}
 	if ue := userError(t, err, "helper.no_binary"); !strings.Contains(ue.What, "vps-02") {
 		t.Errorf("What = %q, want vps-02, the first failure in spec order", ue.What)
+	}
+}
+
+// TestDebugLog: with a logger, every command tops runs and every line the helper logs is a
+// record naming the node; the request itself, which will carry secrets, never is.
+func TestDebugLog(t *testing.T) {
+	node := &fakeNode{machine: "x86_64", installed: map[string]string{}}
+	_, cfg := newNode(t, node.exec)
+	var log bytes.Buffer
+	cfg.Log = slog.New(slog.NewTextHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	d, err := NewDialer(t.Context(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	d.exe, _ = helperFile(t, t.TempDir(), "tops", "helper build 1")
+	d.goos, d.goarch = "linux", "amd64"
+	n, err := d.Connect(t.Context(), "vps-01", "127.0.0.1", wire.Request{RunID: "r-secret-test", Args: []byte(`{"password":"hunter2"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = n.Close()
+	got := log.String()
+	for _, want := range []string{
+		"msg=connected node=vps-01 addr=127.0.0.1:",
+		`msg=ran node=vps-01 cmd="uname -m" duration_ms=`,
+		`msg=ran node=vps-01 cmd="sudo -n true"`,
+		`msg=ran node=vps-01 cmd="sudo -n sh -c`,
+		`msg=helper node=vps-01 op=hello record="{\"level\":\"INFO\",\"msg\":\"op done\"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("log has no %s\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "r-secret-test") || strings.Contains(got, "hunter2") {
+		t.Errorf("the request reached the log:\n%s", got)
 	}
 }

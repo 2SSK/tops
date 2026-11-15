@@ -12,6 +12,7 @@ import (
 type Options struct {
 	JSON    bool
 	NoColor bool
+	Debug   bool
 	Env     string
 
 	Getenv     func(string) string
@@ -38,6 +39,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.SetFlagErrorFunc(usageError)
 	root.PersistentFlags().BoolVar(&opts.JSON, "json", false, "machine-readable output")
 	root.PersistentFlags().BoolVar(&opts.NoColor, "no-color", false, "plain output")
+	root.PersistentFlags().BoolVar(&opts.Debug, "debug", false, "log details to stderr")
 	root.PersistentFlags().StringVarP(&opts.Env, "env", "e", "", "environment under environments/")
 
 	root.AddGroup(

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"runtime"
@@ -29,6 +30,7 @@ type Config struct {
 	KnownHosts string
 	AuthSock   string                            // $SSH_AUTH_SOCK
 	Passphrase func(path string) ([]byte, error) // nil without a terminal
+	Log        *slog.Logger                      // debug records: every command and the helper's own log; nil logs nothing
 }
 
 // Dialer holds what every node of a run shares: the host keys and the identity.
@@ -38,7 +40,8 @@ type Dialer struct {
 	id                identity
 	timeout           time.Duration
 	keepalive         time.Duration
-	exe, goos, goarch string // this executable and its platform: the helper on a matching node
+	log               *slog.Logger // debug records: every command and the helper's own log; nil logs nothing
+	exe, goos, goarch string       // this executable and its platform: the helper on a matching node
 	mu                sync.Mutex
 	bins              map[string]binary // by GOARCH, hashed once per run
 }
@@ -57,8 +60,12 @@ func NewDialer(ctx context.Context, cfg Config) (*Dialer, error) {
 	if err != nil {
 		return nil, err
 	}
+	log := cfg.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	return &Dialer{
-		cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval, exe: exe, goos: runtime.GOOS, goarch: runtime.GOARCH, bins: map[string]binary{},
+		cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval, log: log, exe: exe, goos: runtime.GOOS, goarch: runtime.GOARCH, bins: map[string]binary{},
 	}, nil
 }
 
@@ -72,6 +79,7 @@ type Client struct {
 	Node string
 	Addr string
 	ssh  *ssh.Client
+	log  *slog.Logger // with node=<name>
 
 	closed    chan struct{} // closed by Close: stops the keepalive
 	closeOnce sync.Once
@@ -100,7 +108,8 @@ func (d *Dialer) Dial(ctx context.Context, node, address string) (*Client, error
 		_ = conn.Close()
 		return nil, handshakeError(ctx, node, addr, err)
 	}
-	c := &Client{Node: node, Addr: addr, ssh: ssh.NewClient(cc, chans, reqs), closed: make(chan struct{})}
+	c := &Client{Node: node, Addr: addr, ssh: ssh.NewClient(cc, chans, reqs), log: d.log.With("node", node), closed: make(chan struct{})}
+	c.log.Debug("connected", "addr", addr)
 	go c.keepalive(d.keepalive)
 	return c, nil
 }
@@ -146,7 +155,9 @@ func (c *Client) run(ctx context.Context, cmd string, stdin io.Reader, stdout, s
 	sess.Stdin, sess.Stdout, sess.Stderr = stdin, stdout, stderr
 	stop := context.AfterFunc(ctx, func() { _ = sess.Close() })
 	defer stop()
+	start := time.Now()
 	err = sess.Run(cmd)
+	c.log.Debug("ran", "cmd", cmd, "duration_ms", time.Since(start).Milliseconds(), "err", err)
 	switch {
 	case ctx.Err() != nil:
 		return ctx.Err()

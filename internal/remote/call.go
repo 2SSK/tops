@@ -34,6 +34,7 @@ func (c *Client) call(ctx context.Context, sha256 string, op wire.Op, req wire.R
 	}
 	var stdout, stderr bytes.Buffer
 	err = c.run(ctx, cmdHelper(sha256, op), bytes.NewReader(in), &stdout, &stderr)
+	c.logHelper(op, stderr.Bytes())
 	var exit *ssh.ExitError
 	if err != nil && !errors.As(err, &exit) {
 		return err // the connection or the context, not the helper
@@ -69,4 +70,12 @@ func (c *Client) helperError(op wire.Op, e *wire.Error) error {
 		e = &wire.Error{Code: "helper.failed", Message: "not ok, and no error"}
 	}
 	return &term.UserError{Code: e.Code, What: fmt.Sprintf("%s on %s: %s", op, c.Node, e.Message), Why: e.Detail}
+}
+
+// logHelper copies the helper's own log, slog JSON on stderr, into tops' log: one record per
+// line, with the op and the node.
+func (c *Client) logHelper(op wire.Op, stderr []byte) {
+	for line := range bytes.Lines(stderr) {
+		c.log.Debug("helper", "op", op, "record", string(bytes.TrimSpace(line)))
+	}
 }

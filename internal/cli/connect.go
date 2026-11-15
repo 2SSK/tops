@@ -1,15 +1,17 @@
 package cli
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"io"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/2SSK/tops/internal/fleet"
 	"github.com/2SSK/tops/internal/remote"
 	"github.com/2SSK/tops/internal/wire"
+	"github.com/spf13/cobra"
 )
 
 // connected is every node of an environment, connected with its helper in place.
@@ -28,7 +30,8 @@ func (c *connected) Close() {
 
 // connect reaches every node of env with the spec's ssh settings (TRD "Connect"). Close the
 // result when the command is done.
-func connect(ctx context.Context, opts *Options, env *fleet.Env) (*connected, error) {
+func connect(cmd *cobra.Command, opts *Options, env *fleet.Env) (*connected, error) {
+	ctx := cmd.Context()
 	s := env.Cluster.SSH
 	d, err := remote.NewDialer(ctx, remote.Config{
 		User:       s.User,
@@ -37,6 +40,7 @@ func connect(ctx context.Context, opts *Options, env *fleet.Env) (*connected, er
 		KnownHosts: s.KnownHosts,
 		AuthSock:   opts.Getenv("SSH_AUTH_SOCK"),
 		Passphrase: opts.Passphrase,
+		Log:        debugLog(cmd.ErrOrStderr(), opts),
 	})
 	if err != nil {
 		return nil, err
@@ -51,6 +55,14 @@ func connect(ctx context.Context, opts *Options, env *fleet.Env) (*connected, er
 		return nil, err
 	}
 	return &connected{dialer: d, nodes: nodes}, nil
+}
+
+// debugLog is the --debug logger: slog text records on stderr, or none.
+func debugLog(w io.Writer, opts *Options) *slog.Logger {
+	if !opts.Debug {
+		return slog.New(slog.DiscardHandler)
+	}
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 // newRequest starts the envelope every helper call of this run carries: the run id, and who

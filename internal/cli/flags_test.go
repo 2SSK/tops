@@ -11,6 +11,7 @@ func TestGlobalFlags(t *testing.T) {
 	type flags struct {
 		JSON    bool
 		NoColor bool
+		Debug   bool
 		Env     string
 	}
 
@@ -23,6 +24,7 @@ func TestGlobalFlags(t *testing.T) {
 		{"json before command", []string{"--json", "help"}, flags{JSON: true}},
 		{"json after command", []string{"help", "--json"}, flags{JSON: true}},
 		{"no-color", []string{"help", "--no-color"}, flags{NoColor: true}},
+		{"debug", []string{"--debug", "help"}, flags{Debug: true}},
 		{"env", []string{"-e", "lab", "help"}, flags{Env: "lab"}},
 		{"env long", []string{"help", "--env", "lab"}, flags{Env: "lab"}},
 	}
@@ -37,7 +39,7 @@ func TestGlobalFlags(t *testing.T) {
 			if err := cmd.Execute(); err != nil {
 				t.Fatalf("execute: %v", err)
 			}
-			if got := (flags{opts.JSON, opts.NoColor, opts.Env}); got != tt.want {
+			if got := (flags{opts.JSON, opts.NoColor, opts.Debug, opts.Env}); got != tt.want {
 				t.Errorf("options = %+v, want %+v", opts, tt.want)
 			}
 		})

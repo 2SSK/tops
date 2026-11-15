@@ -121,7 +121,7 @@ func newVersionCommand(opts *Options) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				c, err := connect(cmd.Context(), opts, env)
+				c, err := connect(cmd, opts, env)
 				if err != nil {
 					return err
 				}

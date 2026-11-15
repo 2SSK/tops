@@ -222,3 +222,15 @@ func TestVersionEnvUnknownEnv(t *testing.T) {
 		t.Fatalf("err = %#v, want spec.no_env", err)
 	}
 }
+
+func TestDebugLog(t *testing.T) {
+	var out bytes.Buffer
+	debugLog(&out, &Options{}).Debug("ran", "cmd", "uname -m")
+	if out.Len() != 0 {
+		t.Errorf("without --debug the log wrote %q", out.String())
+	}
+	debugLog(&out, &Options{Debug: true}).Debug("ran", "cmd", "uname -m")
+	if got := out.String(); !strings.Contains(got, `level=DEBUG msg=ran cmd="uname -m"`) {
+		t.Errorf("with --debug the log wrote %q, want a text record", got)
+	}
+}

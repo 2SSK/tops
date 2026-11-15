@@ -32,6 +32,7 @@ func (c *Client) keepalive(interval time.Duration) {
 		}
 	}
 	c.lost.Store(true)
+	c.log.Debug("lost", "misses", keepaliveMisses, "interval", interval)
 	_ = c.ssh.Close()
 }
 
