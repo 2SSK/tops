@@ -234,3 +234,15 @@ func TestDebugLog(t *testing.T) {
 		t.Errorf("with --debug the log wrote %q, want a text record", got)
 	}
 }
+
+func TestCacheDir(t *testing.T) {
+	env := func(vars map[string]string) *Options {
+		return &Options{Getenv: func(k string) string { return vars[k] }}
+	}
+	if got := cacheDir(env(map[string]string{"HOME": "/home/ssk"})); got != "/home/ssk/.cache/tops" {
+		t.Errorf("cacheDir = %q, want ~/.cache/tops", got)
+	}
+	if got := cacheDir(env(map[string]string{"HOME": "/home/ssk", "XDG_CACHE_HOME": "/var/cache/ssk"})); got != "/var/cache/ssk/tops" {
+		t.Errorf("cacheDir = %q, want $XDG_CACHE_HOME/tops", got)
+	}
+}

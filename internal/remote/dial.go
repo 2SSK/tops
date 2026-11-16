@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -30,6 +31,8 @@ type Config struct {
 	KnownHosts string
 	AuthSock   string                            // $SSH_AUTH_SOCK
 	Passphrase func(path string) ([]byte, error) // nil without a terminal
+	Version    string                            // this tops: a release fetches its helpers for other arches
+	Cache      string                            // ${XDG_CACHE_HOME:-~/.cache}/tops: downloaded helpers
 	Log        *slog.Logger                      // debug records: every command and the helper's own log; nil logs nothing
 }
 
@@ -42,6 +45,9 @@ type Dialer struct {
 	keepalive         time.Duration
 	log               *slog.Logger // debug records: every command and the helper's own log; nil logs nothing
 	exe, goos, goarch string       // this executable and its platform: the helper on a matching node
+	version, cache    string       // from Config
+	releases          string       // releaseBase; a test server in tests
+	http              *http.Client
 	mu                sync.Mutex
 	bins              map[string]binary // by GOARCH, hashed once per run
 }
@@ -65,7 +71,7 @@ func NewDialer(ctx context.Context, cfg Config) (*Dialer, error) {
 		log = slog.New(slog.DiscardHandler)
 	}
 	return &Dialer{
-		cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval, log: log, exe: exe, goos: runtime.GOOS, goarch: runtime.GOARCH, bins: map[string]binary{},
+		cfg: cfg, hosts: hosts, id: id, timeout: dialTimeout, keepalive: keepaliveInterval, log: log, version: cfg.Version, cache: cfg.Cache, releases: releaseBase, http: &http.Client{Timeout: fetchTimeout}, exe: exe, goos: runtime.GOOS, goarch: runtime.GOARCH, bins: map[string]binary{},
 	}, nil
 }
 

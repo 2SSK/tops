@@ -243,7 +243,7 @@ func TestConnectNoBinary(t *testing.T) {
 	e := newConnectEnv(t, "aarch64") // and nothing beside the executable
 	_, err := e.connect(t)
 	ue := userError(t, err, "helper.no_binary")
-	if !strings.Contains(ue.What, "linux/arm64") || ue.Fix != "make build-linux" {
+	if !strings.Contains(ue.What, "linux/arm64") || ue.Fix != "make build-linux, or use a release" {
 		t.Errorf("error = %+v", ue)
 	}
 	if got := e.srv.commands(); slices.ContainsFunc(got, func(c string) bool { return strings.HasPrefix(c, "sudo -n sh") }) {
@@ -288,14 +288,14 @@ func TestConnectUnreachable(t *testing.T) {
 
 func TestBinaryHashedOnce(t *testing.T) {
 	e := newConnectEnv(t, "x86_64")
-	b1, err := e.d.binary("amd64")
+	b1, err := e.d.binary(t.Context(), "amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(e.d.exe, []byte("rebuilt mid-run"), 0o755); err != nil { //nolint:gosec // an executable
 		t.Fatal(err)
 	}
-	b2, err := e.d.binary("amd64")
+	b2, err := e.d.binary(t.Context(), "amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestBinaryHashedOnce(t *testing.T) {
 	}
 }
 
-func TestBinaryFor(t *testing.T) {
+func TestBinaryPath(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "tops")
 	arm, _ := helperFile(t, dir, "tops-linux-arm64", "x")
@@ -316,9 +316,10 @@ func TestBinaryFor(t *testing.T) {
 		{"darwin", "arm64", "arm64", arm}, // a Mac is never linux, whatever the arch
 	}
 	for _, tt := range tests {
-		got, err := binaryFor(exe, tt.goos, tt.goarch, tt.arch)
+		d := &Dialer{exe: exe, goos: tt.goos, goarch: tt.goarch, version: "v0.2.0"} // no download: a file wins
+		got, err := d.binaryPath(t.Context(), tt.arch)
 		if err != nil || got != tt.want {
-			t.Errorf("binaryFor(%s/%s, %s) = %q, %v; want %q", tt.goos, tt.goarch, tt.arch, got, err, tt.want)
+			t.Errorf("binaryPath(%s/%s, %s) = %q, %v; want %q", tt.goos, tt.goarch, tt.arch, got, err, tt.want)
 		}
 	}
 }

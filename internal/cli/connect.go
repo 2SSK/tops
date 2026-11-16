@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/2SSK/tops/internal/fleet"
@@ -40,6 +41,8 @@ func connect(cmd *cobra.Command, opts *Options, env *fleet.Env) (*connected, err
 		KnownHosts: s.KnownHosts,
 		AuthSock:   opts.Getenv("SSH_AUTH_SOCK"),
 		Passphrase: opts.Passphrase,
+		Version:    Version,
+		Cache:      cacheDir(opts),
 		Log:        debugLog(cmd.ErrOrStderr(), opts),
 	})
 	if err != nil {
@@ -55,6 +58,16 @@ func connect(cmd *cobra.Command, opts *Options, env *fleet.Env) (*connected, err
 		return nil, err
 	}
 	return &connected{dialer: d, nodes: nodes}, nil
+}
+
+// cacheDir is where downloaded helpers live: ${XDG_CACHE_HOME:-~/.cache}/tops on every OS
+// (backend schema "Files on the workstation"), so a Mac and Linux use the same path.
+func cacheDir(opts *Options) string {
+	base := opts.Getenv("XDG_CACHE_HOME")
+	if base == "" {
+		base = filepath.Join(opts.Getenv("HOME"), ".cache")
+	}
+	return filepath.Join(base, "tops")
 }
 
 // debugLog is the --debug logger: slog text records on stderr, or none.

@@ -29,36 +29,39 @@ type binary struct {
 	sha256 string // hex
 }
 
-// binaryFor finds the linux helper for a node's arch: this executable when it is one, else
-// tops-linux-<arch> beside it, which make build-linux writes.
-func binaryFor(exe, goos, goarch, arch string) (string, error) {
-	if goos == "linux" && goarch == arch {
-		return exe, nil
+// binaryPath finds the linux helper for a node's arch: this executable when it is one, else
+// tops-linux-<arch> beside it (make build-linux), else this version's release, downloaded.
+func (d *Dialer) binaryPath(ctx context.Context, arch string) (string, error) {
+	if d.goos == "linux" && d.goarch == arch {
+		return d.exe, nil
 	}
-	beside := filepath.Join(filepath.Dir(exe), "tops-linux-"+arch)
-	if _, err := os.Stat(beside); err != nil {
-		return "", &term.UserError{
-			Code: "helper.no_binary",
-			What: "no linux/" + arch + " helper for this tops",
-			Why:  fmt.Sprintf("this tops is %s/%s and %s does not exist", goos, goarch, beside),
-			Fix:  "make build-linux",
-		}
+	beside := filepath.Join(filepath.Dir(d.exe), "tops-linux-"+arch)
+	if _, err := os.Stat(beside); err == nil {
+		return beside, nil
 	}
-	return beside, nil
+	if releaseVersion.MatchString(d.version) {
+		return d.fetchRelease(ctx, arch)
+	}
+	return "", &term.UserError{
+		Code: "helper.no_binary",
+		What: "no linux/" + arch + " helper for tops " + d.version,
+		Why:  fmt.Sprintf("this tops is %s/%s, %s is not a release, and %s does not exist", d.goos, d.goarch, d.version, beside),
+		Fix:  "make build-linux, or use a release",
+	}
 }
 
 // binary returns the helper for arch with its sha256, hashed once per run.
-func (d *Dialer) binary(arch string) (binary, error) {
+func (d *Dialer) binary(ctx context.Context, arch string) (binary, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if b, ok := d.bins[arch]; ok {
 		return b, nil
 	}
-	path, err := binaryFor(d.exe, d.goos, d.goarch, arch)
+	path, err := d.binaryPath(ctx, arch)
 	if err != nil {
 		return binary{}, err
 	}
-	f, err := os.Open(path) //nolint:gosec // our own executable or the build beside it
+	f, err := os.Open(path) //nolint:gosec // our own executable, the build beside it, or the cached release
 	if err != nil {
 		return binary{}, fmt.Errorf("read the helper: %w", err)
 	}
@@ -101,7 +104,7 @@ func (d *Dialer) connect(ctx context.Context, c *Client, req wire.Request) (*Nod
 	if err != nil {
 		return nil, err
 	}
-	bin, err := d.binary(arch)
+	bin, err := d.binary(ctx, arch)
 	if err != nil {
 		return nil, err
 	}
