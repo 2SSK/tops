@@ -138,3 +138,34 @@ func TestPinsWaitForRoles(t *testing.T) {
 		t.Errorf("Validate() = %v, want only the role problem", got)
 	}
 }
+
+// TestEveryPinFieldFromYAML: each field decodes from the key the backend schema documents.
+// A tag that differs, even only in case, makes the key "unknown" and the field never set.
+func TestEveryPinFieldFromYAML(t *testing.T) {
+	c, err := Parse("cluster.yaml", []byte(`cluster: lab
+temporal: { version: 1.31.3, cli: 1.9.1 }
+shards: 512
+persistence:
+  postgres: { host: 10.80.0.20, user: temporal }
+ssh: { user: deploy }
+namespaces: [{ name: default, retention: 72h }]
+nodes:
+  - name: vps-01
+    address: 10.80.0.11
+    roles: [frontend, history, matching, worker]
+    pin:
+      history: { memoryMax: 2G, cpuWeight: 150, dbPool: 20, dbVisibilityPool: 4 }
+`))
+	if err != nil {
+		t.Fatalf("Parse: %#v", err)
+	}
+	Defaults(c)
+	if ps := Validate(c); len(ps) != 0 {
+		t.Fatalf("Validate() = %v, want no problems", ps)
+	}
+	p := c.Nodes[0].Pin["history"]
+	if p.MemoryMax != "2G" || p.CPUWeight == nil || *p.CPUWeight != 150 || p.DBPool == nil || *p.DBPool != 20 ||
+		p.DBVisibilityPool == nil || *p.DBVisibilityPool != 4 {
+		t.Errorf("pin = %+v, want every field set", p)
+	}
+}

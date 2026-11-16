@@ -79,5 +79,5 @@ type Pin struct {
 	MemoryMax        string `yaml:"memoryMax"` // a size, like 512M
 	CPUWeight        *int   `yaml:"cpuWeight"`
 	DBPool           *int   `yaml:"dbPool"`
-	DBVisibilityPool *int   `yaml:"DBVisibilityPool"`
+	DBVisibilityPool *int   `yaml:"dbVisibilityPool"`
 }

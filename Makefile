@@ -32,8 +32,10 @@ lint:
 cover:
 	awk -f tools/cover.awk coverage.out
 
+# Scan with the Go that CI and releases build with (go.mod's toolchain line), not whatever Go
+# this machine has: a newer local Go hides vulnerabilities the shipped binary has.
 vuln:
-	govulncheck ./...
+	GOTOOLCHAIN=$$(awk '/^toolchain/ {print $$2}' go.mod) govulncheck ./...
 
 # The workstation binary also builds for darwin: a Linux-only call must sit behind a build tag.
 cross:
