@@ -101,7 +101,11 @@ func validateNodes(ps *problems, nodes []Node) {
 		}
 
 		addresses[n.Address] = i
+		before := len(*ps)
 		validateRoles(ps, path+".roles", n.Roles)
+		if len(*ps) == before { // pins name roles: with the roles wrong, they would only echo it
+			validatePin(ps, path+".pin", n)
+		}
 	}
 	validateRoleCoverage(ps, nodes)
 }

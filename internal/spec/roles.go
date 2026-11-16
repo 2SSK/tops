@@ -2,6 +2,7 @@ package spec
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -44,5 +45,39 @@ func validateRoleCoverage(ps *problems, nodes []Node) {
 		if !slices.ContainsFunc(nodes, runs) {
 			ps.addf("nodes", "no node runs %s", r)
 		}
+	}
+}
+
+// validatePin checks one node's pins; path is "nodes[i].pin". Whether a pinned memoryMax
+// still fits the role's floor needs the sizing constants, so internal/sizing checks that.
+func validatePin(ps *problems, path string, n Node) {
+	for _, role := range slices.Sorted(maps.Keys(n.Pin)) {
+		rpath := path + "." + role
+		if !slices.Contains(n.Roles, role) {
+			ps.addf(rpath, "%s is not one of this node's roles (%s)", role, strings.Join(n.Roles, ", "))
+			continue
+		}
+		checkPin(ps, rpath, n.Pin[role])
+	}
+}
+
+// checkPin checks one role's pinned values; path is "nodes[i].pin.<role>".
+func checkPin(ps *problems, path string, p Pin) {
+	if p.MemoryMax != "" {
+		if _, err := ParseSize(p.MemoryMax); err != nil {
+			ps.addf(path+".memoryMax", "%v", err)
+		}
+	}
+	if w := p.CPUWeight; w != nil && (*w < 1 || *w > 10000) {
+		ps.addf(path+".cpuWeight", "%d must be between 1 and 10000", *w)
+	}
+	atLeastOne(ps, path+".dbPool", p.DBPool)
+	atLeastOne(ps, path+".dbVisibilityPool", p.DBVisibilityPool)
+}
+
+// atLeastOne checks a pinned pool size, when it is set.
+func atLeastOne(ps *problems, path string, n *int) {
+	if n != nil && *n < 1 {
+		ps.addf(path, "%d must be at least 1", *n)
 	}
 }

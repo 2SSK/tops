@@ -32,3 +32,5 @@ nodes:
   - name: vps-03
     address: 10.80.0.13
     roles: [frontend, matching]
+    pin:
+      matching: { memoryMax: 512M }

@@ -68,7 +68,16 @@ type UI struct {
 
 // Node is one host running Temporal.
 type Node struct {
-	Name    string   `yaml:"name"`
-	Address string   `yaml:"address"`
-	Roles   []string `yaml:"roles"`
+	Name    string         `yaml:"name"`
+	Address string         `yaml:"address"`
+	Roles   []string       `yaml:"roles"`
+	Pin     map[string]Pin `yaml:"pin"` // by role: sizes the operator fixes instead of the formula
+}
+
+// Pin replaces formula results for one role on one node. An unset field keeps the formula.
+type Pin struct {
+	MemoryMax        string `yaml:"memoryMax"` // a size, like 512M
+	CPUWeight        *int   `yaml:"cpuWeight"`
+	DBPool           *int   `yaml:"dbPool"`
+	DBVisibilityPool *int   `yaml:"DBVisibilityPool"`
 }
