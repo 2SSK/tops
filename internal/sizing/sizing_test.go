@@ -141,17 +141,18 @@ func TestSizePoolsClamp(t *testing.T) {
 
 func TestSizeRefuses(t *testing.T) {
 	tests := []struct {
-		name string
-		node Node
-		why  string
+		name  string
+		node  Node
+		roles string // as the refusal names them, in stage order
+		why   string
 	}{
-		{"floors do not fit", Node{Name: "tiny", Memory: 500 * mib, Cores: 1, Roles: allRoles},
+		{"floors do not fit", Node{Name: "tiny", Memory: 500 * mib, Cores: 1, Roles: allRoles}, "frontend, history, matching, worker",
 			"its roles need 400M (floors and pins) and the OS 200M, but it has 500M"},
 		{"a pin does not fit", Node{Name: "vps-03", Memory: 768 * mib, Cores: 1, Roles: []string{"frontend", "matching"},
-			Pin: map[string]spec.Pin{"matching": {MemoryMax: "500M"}}},
+			Pin: map[string]spec.Pin{"matching": {MemoryMax: "500M"}}}, "frontend, matching",
 			"its roles need 600M (floors and pins) and the OS 200M, but it has 768M"},
 		{"a pin below the floor", Node{Name: "vps-03", Memory: 768 * mib, Cores: 1, Roles: []string{"frontend", "matching"},
-			Pin: map[string]spec.Pin{"matching": {MemoryMax: "64M"}}},
+			Pin: map[string]spec.Pin{"matching": {MemoryMax: "64M"}}}, "frontend, matching",
 			"pin.matching.memoryMax 64M is below the matching floor 100M"},
 	}
 	for _, tt := range tests {
@@ -161,7 +162,7 @@ func TestSizeRefuses(t *testing.T) {
 			if !errors.As(err, &ue) || ue.Code != "refused.node_too_small" {
 				t.Fatalf("err = %v, want refused.node_too_small", err)
 			}
-			if ue.What != tt.node.Name+" is too small for its roles" || ue.Why != tt.why {
+			if want := tt.node.Name + " cannot run " + tt.roles; ue.What != want || ue.Why != tt.why {
 				t.Errorf("error = %q / %q, want why %q", ue.What, ue.Why, tt.why)
 			}
 			if term.ExitCode(err) != 3 {
@@ -204,7 +205,8 @@ func TestBytes(t *testing.T) {
 }
 
 // TestPlaceholderFitsTheLab: until T2.1b measures them, the placeholder constants must at least
-// size VPSLAB's nodes (1280M with every role, 768M with frontend and matching).
+// size VPSLAB's nodes (1280M with every role, 768M with frontend and matching) and pass
+// headroom for the lab's 512 shards.
 func TestPlaceholderFitsTheLab(t *testing.T) {
 	for _, minor := range []string{"1.30", "1.31"} {
 		c, err := For(minor)
@@ -214,13 +216,22 @@ func TestPlaceholderFitsTheLab(t *testing.T) {
 		if c.Temporal != minor || c.MeasuredAt != "" {
 			t.Errorf("For(%s) = %s measured %q, want the placeholder", minor, c.Temporal, c.MeasuredAt)
 		}
+		var sized []NodeSize
 		for _, n := range []Node{
 			{Name: "vps-01", Memory: 1280 * mib, Cores: 1.5, Roles: allRoles},
+			{Name: "vps-02", Memory: 1280 * mib, Cores: 1.5, Roles: allRoles},
 			{Name: "vps-03", Memory: 768 * mib, Cores: 1, Roles: []string{"frontend", "matching"}, Pin: map[string]spec.Pin{"matching": {MemoryMax: "512M"}}},
 		} {
-			if _, err := Size(c, n); err != nil {
+			ns, err := Size(c, n)
+			if err != nil {
 				t.Errorf("Temporal %s, %s: %v", minor, n.Name, err)
 			}
+			sized = append(sized, ns)
+		}
+		if h := CheckHeadroom(c, 512, sized); !h.OK {
+			t.Errorf("Temporal %s: the lab's 512 shards fail headroom: %+v", minor, h)
+		} else {
+			t.Logf("Temporal %s headroom: %s predicted of %s", minor, Bytes(h.Predicted), Bytes(h.Limit))
 		}
 	}
 	if _, err := For("1.29"); err == nil {

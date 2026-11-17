@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	"github.com/2SSK/tops/internal/spec"
 	"github.com/2SSK/tops/internal/term"
@@ -56,7 +57,7 @@ func Size(c Constants, n Node) (NodeSize, error) {
 				return NodeSize{}, fmt.Errorf("%s pin.%s.memoryMax: %w", n.Name, r, err)
 			}
 			if b < c.Floor[r] {
-				return NodeSize{}, tooSmall(n.Name, fmt.Sprintf("pin.%s.memoryMax %s is below the %s floor %s", r, Bytes(b), r, Bytes(c.Floor[r])))
+				return NodeSize{}, tooSmall(n.Name, roles, fmt.Sprintf("pin.%s.memoryMax %s is below the %s floor %s", r, Bytes(b), r, Bytes(c.Floor[r])))
 			}
 			pinned[r] = b
 		}
@@ -74,7 +75,7 @@ func Size(c Constants, n Node) (NodeSize, error) {
 	}
 	free := float64(n.Memory - c.OSBase - needed)
 	if free < 0 {
-		return NodeSize{}, tooSmall(n.Name, fmt.Sprintf("its roles need %s (floors and pins) and the OS %s, but it has %s", Bytes(needed), Bytes(c.OSBase), Bytes(n.Memory)))
+		return NodeSize{}, tooSmall(n.Name, roles, fmt.Sprintf("its roles need %s (floors and pins) and the OS %s, but it has %s", Bytes(needed), Bytes(c.OSBase), Bytes(n.Memory)))
 	}
 	ns := NodeSize{Name: n.Name, Reserve: c.OSBase, Free: int64(free)}
 	for _, r := range roles {
@@ -149,10 +150,10 @@ func clamp(n, lo, hi int) int {
 	return max(lo, min(n, hi))
 }
 
-func tooSmall(node, why string) error {
+func tooSmall(node string, roles []string, why string) error {
 	return &term.UserError{
 		Code: "refused.node_too_small",
-		What: node + " is too small for its roles",
+		What: node + " cannot run " + strings.Join(roles, ", "),
 		Why:  why,
 		Fix:  "give the node more memory, move a role to another node, or lower a pin",
 	}
