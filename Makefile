@@ -23,7 +23,7 @@ test:
 # The real SSH path against systemd containers: needs docker. The tests start and remove them.
 helper-test: build
 	docker build --quiet --tag tops-helper-test test/helper
-	go test -tags helper -count=1 -run '^TestHelper' ./internal/remote/
+	go test -tags helper -count=1 -run '^TestHelper' ./internal/remote/ ./internal/datastore/...
 
 lint:
 	golangci-lint run
