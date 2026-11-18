@@ -2,6 +2,7 @@ package render
 
 import (
 	"github.com/2SSK/tops/internal/secret"
+	"github.com/2SSK/tops/internal/settings"
 	"github.com/2SSK/tops/internal/sizing"
 	"github.com/2SSK/tops/internal/spec"
 )
@@ -21,8 +22,9 @@ type NodeInput struct {
 	Secrets    map[string]secret.Value // rendered into temporal.env only
 }
 
-// RoleInput is one role on the node: its sizes.
+// RoleInput is one role on the node: its sizes and its merged dynamic config.
 type RoleInput struct {
-	Role string
-	Size sizing.RoleSize
+	Role    string
+	Size    sizing.RoleSize
+	Dynamic settings.File // settings.Layers.Merge for this role
 }

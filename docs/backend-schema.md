@@ -680,6 +680,17 @@ MemoryMax=1300M
 CPUWeight=150
 ```
 
+### `/etc/temporal/dynamicconfig-history.yaml`
+
+```yaml
+# Rendered by tops for lab/tops-e2e/vps-01 role history. tops apply overwrites hand edits.
+history.cacheTTL:
+  - value: 15m
+```
+
+The role's merged settings in Temporal's format: keys sorted and in the catalog's spelling, each key's list
+as the fleet wrote it. A role with no settings gets `{}`.
+
 ### `/etc/systemd/system/temporal@.service`
 
 ```ini

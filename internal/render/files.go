@@ -1,6 +1,12 @@
 package render
 
-import "io/fs"
+import (
+	"io/fs"
+	"strings"
+
+	"github.com/2SSK/tops/internal/settings"
+	"go.yaml.in/yaml/v3"
+)
 
 const mib = 1 << 20
 
@@ -11,8 +17,9 @@ type Effect string
 
 // The effects of the files rendered so far.
 const (
-	RestartRole Effect = "restart role"      // the file's role restarts
-	RestartAll  Effect = "restart all roles" // every role on the node restarts
+	RestartRole Effect = "restart role"        // the file's role restarts
+	RestartAll  Effect = "restart all roles"   // every role on the node restarts
+	Dynamic     Effect = "hot or restart role" // plan decides from the classes of the changed keys
 )
 
 // File is one rendered file and how tops installs it
@@ -36,6 +43,7 @@ type roleData struct {
 	Role                              string
 	MemoryHigh, MemoryMax, GoMemLimit int64 // MiB
 	CPUWeight                         int
+	Settings                          string
 }
 
 // Render renders every file of a node.
@@ -75,10 +83,28 @@ func roleFiles(in NodeInput, r RoleInput) []fromTemplate {
 		MemoryMax:  r.Size.MemoryMax / mib,
 		GoMemLimit: r.Size.GoMemLimit / mib,
 		CPUWeight:  r.Size.CPUWeight,
+		Settings:   dynamicConfig(r.Dynamic),
 	}
 	return []fromTemplate{
 		{File{Path: "/etc/temporal/" + r.Role + ".yaml", Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "server.yaml", newServerData(in, r)},
 		{File{Path: "/etc/temporal/" + r.Role + ".env", Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "role.env", d},
 		{File{Path: "/etc/systemd/system/temporal@" + r.Role + ".service.d/limits.conf", Mode: 0o644, Owner: "root", Group: "root", Role: r.Role, Effect: RestartRole}, "limits.conf", d},
+		{File{Path: "/etc/temporal/dynamicconfig-" + r.Role + ".yaml", Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: Dynamic}, "dynamicconfig.yaml", d},
 	}
+}
+
+// dynamicConfig is a role's merged dynamic config in Temporal's file format: the keys sorted,
+// each key's values in the order the fleet wrote them.
+func dynamicConfig(f settings.File) string {
+	m := make(map[string][]settings.Value, len(f))
+	for key, e := range f {
+		m[key] = e.Values
+	}
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	// settings.Parse decoded every value from YAML, so every value encodes.
+	_ = enc.Encode(m)
+	_ = enc.Close()
+	return b.String()
 }

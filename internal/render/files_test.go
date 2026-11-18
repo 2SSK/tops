@@ -52,9 +52,11 @@ func TestRenderFileSet(t *testing.T) {
 		{"/etc/temporal/frontend.yaml", 0o640, "root", "temporal", "frontend", RestartRole},
 		{"/etc/temporal/frontend.env", 0o640, "root", "temporal", "frontend", RestartRole},
 		{"/etc/systemd/system/temporal@frontend.service.d/limits.conf", 0o644, "root", "root", "frontend", RestartRole},
+		{"/etc/temporal/dynamicconfig-frontend.yaml", 0o640, "root", "temporal", "frontend", Dynamic},
 		{"/etc/temporal/history.yaml", 0o640, "root", "temporal", "history", RestartRole},
 		{"/etc/temporal/history.env", 0o640, "root", "temporal", "history", RestartRole},
 		{"/etc/systemd/system/temporal@history.service.d/limits.conf", 0o644, "root", "root", "history", RestartRole},
+		{"/etc/temporal/dynamicconfig-history.yaml", 0o640, "root", "temporal", "history", Dynamic},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("file set:\n got %v\nwant %v", got, want)
@@ -69,6 +71,8 @@ func TestRenderGolden(t *testing.T) {
 		"/etc/temporal/temporal.env":                                 "vps-01-temporal.env",
 		"/etc/temporal/history.env":                                  "vps-01-history.env",
 		"/etc/systemd/system/temporal@history.service.d/limits.conf": "vps-01-history-limits.conf",
+		"/etc/temporal/dynamicconfig-frontend.yaml":                  "vps-01-dynamicconfig-frontend.yaml",
+		"/etc/temporal/dynamicconfig-history.yaml":                   "vps-01-dynamicconfig-history.yaml",
 	} {
 		t.Run(golden, func(t *testing.T) { checkGolden(t, golden, file(t, files, path).Content) })
 	}

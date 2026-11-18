@@ -1,0 +1,6 @@
+# Rendered by tops for lab/tops-e2e/vps-01 role frontend. tops apply overwrites hand edits.
+frontend.namespaceRPS:
+  - value: 400
+    constraints:
+      namespace: drills
+  - value: 2400

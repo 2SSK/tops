@@ -47,10 +47,10 @@ func lab() NodeInput {
 		Roles: []RoleInput{
 			{Role: "frontend", Size: sizing.RoleSize{
 				Role: "frontend", MemoryMax: 600 * mib, MemoryHigh: 540 * mib, GoMemLimit: 430 * mib, CPUWeight: 100, DBPool: 2, DBVisPool: 3,
-			}},
+			}, Dynamic: dynamic("frontend.namespaceRPS:\n  - value: 400\n    constraints: { namespace: drills }\n  - value: 2400\n")},
 			{Role: "history", Size: sizing.RoleSize{
 				Role: "history", MemoryMax: 1300 * mib, MemoryHigh: 1200 * mib, GoMemLimit: 1000 * mib, CPUWeight: 150, DBPool: 12, DBVisPool: 3,
-			}},
+			}, Dynamic: dynamic("history.cacheTTL:\n  - value: 15m\n")},
 		},
 		Secrets: map[string]secret.Value{"TOPS_PG_PASSWORD": secret.New("lab-password-1")},
 	}
