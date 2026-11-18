@@ -26,10 +26,11 @@ type Node struct {
 
 // NodeSize is the result for one node.
 type NodeSize struct {
-	Name    string     `json:"name"`
-	Reserve int64      `json:"reserveBytes"` // left to the OS
-	Free    int64      `json:"freeBytes"`    // shared among the unpinned roles above their floors
-	Roles   []RoleSize `json:"roles"`        // in stage order
+	Name       string     `json:"name"`
+	Reserve    int64      `json:"reserveBytes"` // left to the OS
+	Free       int64      `json:"freeBytes"`    // shared among the unpinned roles above their floors
+	GoMaxProcs int        `jsson:"GoMaxProcs"`  // the same for every role on the node
+	Roles      []RoleSize `json:"roles"`        // in stage order
 }
 
 // RoleSize is one role's limits on one node (backend schema "Sizing").
@@ -77,7 +78,7 @@ func Size(c Constants, n Node) (NodeSize, error) {
 	if free < 0 {
 		return NodeSize{}, tooSmall(n.Name, roles, fmt.Sprintf("its roles need %s (floors and pins) and the OS %s, but it has %s", Bytes(needed), Bytes(c.OSBase), Bytes(n.Memory)))
 	}
-	ns := NodeSize{Name: n.Name, Reserve: c.OSBase, Free: int64(free)}
+	ns := NodeSize{Name: n.Name, Reserve: c.OSBase, Free: int64(free), GoMaxProcs: GoMaxProcs(n.Cores)}
 	for _, r := range roles {
 		ns.Roles = append(ns.Roles, c.role(r, n, pinned, free, shares))
 	}

@@ -67,8 +67,8 @@ func TestSizeAllRoles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "vps-01" || got.Reserve != 200*mib || got.Free != 700*mib {
-		t.Errorf("node = %s reserve %d free %d", got.Name, got.Reserve/mib, got.Free/mib)
+	if got.Name != "vps-01" || got.Reserve != 200*mib || got.Free != 700*mib || got.GoMaxProcs != 2 {
+		t.Errorf("node = %s reserve %d free %d GOMAXPROCS %d", got.Name, got.Reserve/mib, got.Free/mib, got.GoMaxProcs)
 	}
 	check(t, got, []row{
 		{"frontend", 240, 216, 172, 89, 2, 2, "", "floor 100M + free 700M × share 0.20"},

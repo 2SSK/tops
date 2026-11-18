@@ -409,9 +409,9 @@ cannot drift from its evidence. Re-measured for every new supported Temporal min
 | Limits         | `/etc/systemd/system/temporal@<role>.service.d/limits.conf`: `MemoryHigh`, `MemoryMax`, `CPUWeight`                                                                                          |
 | Dynamic config | `/etc/temporal/dynamicconfig-<role>.yaml`                                                                                                                                                    |
 
-The worker role reaches frontends through `publicClient.hostPort`; on a node without a frontend it is the
-first frontend node's `<address>:7233`. Whether 1.31 still requires it or resolves frontends through
-membership: verify in T2.5 against `common/config` and the worker service.
+No role's file sets `publicClient`: without it, Temporal 1.31.3 resolves frontends through membership and
+reads frontend's `httpPort` from the file's own `services` block (`common/resource/fx.go`,
+`getFrontendConnectionDetails`), so every role's file lists all four roles' ports.
 
 ### Ports
 
@@ -793,6 +793,6 @@ Idempotency: `apply` twice with an unchanged spec changes nothing the second tim
 | 3   | Does systemd apply new `MemoryMax`/`CPUWeight` to a running unit on `daemon-reload` alone?                                              | Not relied on: a limits change also changes `GOMEMLIMIT`, so the role restarts |
 | 4   | Does GOMAXPROCS follow the container's `cpu.max` for a process in a child cgroup under VPSLAB?                                          | No: measured 12 in T2.1, so `<role>.env` sets GOMAXPROCS                       |
 | 5   | Does a frontend report SERVING before any history exists?                                                                               | Check in T3.8; stage 1 gate adapts                                             |
-| 6   | Does the worker role need `publicClient.hostPort` in 1.31?                                                                              | Check in T2.5                                                                  |
+| 6   | Does the worker role need `publicClient.hostPort` in 1.31?                                                                              | No: membership finds frontends (T2.5)                                          |
 | 7   | Where do ui-server release binaries live for the pinned UI version (the `temporalio/ui-server` repository or `temporalio/ui` releases)? | Check in T6.2; `internal/release` holds the URL pattern once                   |
 | 8   | Are `DescribeCluster`/`ClusterMetadata` messages of the one server module in `go.mod` wire-compatible with both supported minors?       | Check in T3.6 against both binaries; T7 re-checks                              |

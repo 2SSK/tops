@@ -266,6 +266,14 @@ type RoleSize struct {
 	Pinned     []string `json:"pinned"`  // fields that came from a pin
 	Formula    string   `json:"formula"` // e.g. "floor 140M + free 1.2G × share 0.41"
 }
+
+type NodeSize struct {
+	Name       string     `json:"name"`
+	Reserve    int64      `json:"reserveBytes"` // left to the OS
+	Free       int64      `json:"freeBytes"`    // shared among the unpinned roles above their floors
+	GoMaxProcs int        `json:"goMaxProcs"`   // max(ceil(cores), 2), the same for every role
+	Roles      []RoleSize `json:"roles"`        // in stage order
+}
 ```
 
 `internal/sizing/testdata/measure-<date>.json` (raw evidence, T2.1b):
@@ -656,8 +664,8 @@ dynamicConfigClient:
 ```
 
 `clusterMetadata` values other than the name are template constants pinned by a golden test. On a node that
-runs no frontend, `rpcAddress` is the first frontend node's `<address>:7233`. The worker role's file adds
-`publicClient.hostPort` when T2.5 confirms it is needed.
+runs no frontend, `rpcAddress` is the first frontend node's `<address>:7233`. No file sets `publicClient`:
+roles find frontends through membership (TRD "Rendering per role").
 
 ### `/etc/temporal/history.env`, `temporal.env`, limits
 

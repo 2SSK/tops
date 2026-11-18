@@ -1,0 +1,317 @@
+==> /etc/systemd/system/temporal@.service (0644 root:root, role "", restart all roles) <==
+# Rendered by tops. tops apply overwrites hand edits.
+[Unit]
+Description=Temporal %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=temporal
+Group=temporal
+EnvironmentFile=/etc/temporal/temporal.env
+EnvironmentFile=/etc/temporal/%i.env
+ExecStart=/opt/temporal/current/temporal-server --config-file /etc/temporal/%i.yaml --allow-no-auth start --service %i
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+LimitNOFILE=65536
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/temporal
+
+[Install]
+WantedBy=multi-user.target
+
+==> /etc/temporal/temporal.env (0600 root:root, role "", restart all roles) <==
+# Rendered by tops for lab/tops-e2e/vps-02, shared by every role. tops apply overwrites hand edits.
+TOPS_PG_PASSWORD=lab-password-1
+
+==> /etc/temporal/frontend.yaml (0640 root:temporal, role "frontend", restart role) <==
+# enable-template
+# Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
+log: { stdout: true, level: info }
+persistence:
+  numHistoryShards: 512
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 2
+        maxIdleConns: 2
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal_visibility
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 3
+        maxIdleConns: 3
+        maxConnLifetime: 1h
+global:
+  membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
+  pprof: { port: 7933, host: 127.0.0.1 }
+  metrics:
+    prometheus: { framework: tally, timerType: histogram, listenAddress: "0.0.0.0:9233" }
+services:
+  frontend: { rpc: { grpcPort: 7233, membershipPort: 6933, httpPort: 7243, bindOnIP: 0.0.0.0 } }
+  history:  { rpc: { grpcPort: 7234, membershipPort: 6934, bindOnIP: 0.0.0.0 } }
+  matching: { rpc: { grpcPort: 7235, membershipPort: 6935, bindOnIP: 0.0.0.0 } }
+  worker:   { rpc: { grpcPort: 7239, membershipPort: 6939, bindOnIP: 0.0.0.0 } }
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: tops-e2e
+  currentClusterName: tops-e2e
+  clusterInformation:
+    tops-e2e: { enabled: true, initialFailoverVersion: 1, rpcName: frontend, rpcAddress: 127.0.0.1:7233 }
+dcRedirectionPolicy: { policy: noop }
+dynamicConfigClient:
+  filepath: /etc/temporal/dynamicconfig-frontend.yaml
+  pollInterval: 10s
+
+==> /etc/temporal/frontend.env (0640 root:temporal, role "frontend", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
+GOMEMLIMIT=261MiB
+GOMAXPROCS=2
+
+==> /etc/systemd/system/temporal@frontend.service.d/limits.conf (0644 root:root, role "frontend", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
+[Service]
+MemoryHigh=348M
+MemoryMax=387M
+CPUWeight=90
+
+==> /etc/temporal/dynamicconfig-frontend.yaml (0640 root:temporal, role "frontend", hot or restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
+frontend.namespaceRPS:
+  - value: 400
+    constraints:
+      namespace: drills
+  - value: 2400
+limit.maxIDLength:
+  - value: 1000
+
+==> /etc/temporal/history.yaml (0640 root:temporal, role "history", restart role) <==
+# enable-template
+# Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
+log: { stdout: true, level: info }
+persistence:
+  numHistoryShards: 512
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 6
+        maxIdleConns: 6
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal_visibility
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 2
+        maxIdleConns: 2
+        maxConnLifetime: 1h
+global:
+  membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
+  pprof: { port: 7934, host: 127.0.0.1 }
+  metrics:
+    prometheus: { framework: tally, timerType: histogram, listenAddress: "0.0.0.0:9234" }
+services:
+  frontend: { rpc: { grpcPort: 7233, membershipPort: 6933, httpPort: 7243, bindOnIP: 0.0.0.0 } }
+  history:  { rpc: { grpcPort: 7234, membershipPort: 6934, bindOnIP: 0.0.0.0 } }
+  matching: { rpc: { grpcPort: 7235, membershipPort: 6935, bindOnIP: 0.0.0.0 } }
+  worker:   { rpc: { grpcPort: 7239, membershipPort: 6939, bindOnIP: 0.0.0.0 } }
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: tops-e2e
+  currentClusterName: tops-e2e
+  clusterInformation:
+    tops-e2e: { enabled: true, initialFailoverVersion: 1, rpcName: frontend, rpcAddress: 127.0.0.1:7233 }
+dcRedirectionPolicy: { policy: noop }
+dynamicConfigClient:
+  filepath: /etc/temporal/dynamicconfig-history.yaml
+  pollInterval: 10s
+
+==> /etc/temporal/history.env (0640 root:temporal, role "history", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
+GOMEMLIMIT=552MiB
+GOMAXPROCS=2
+
+==> /etc/systemd/system/temporal@history.service.d/limits.conf (0644 root:root, role "history", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
+[Service]
+MemoryHigh=737M
+MemoryMax=819M
+CPUWeight=180
+
+==> /etc/temporal/dynamicconfig-history.yaml (0640 root:temporal, role "history", hot or restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
+history.cacheTTL:
+  - value: 1h
+limit.maxIDLength:
+  - value: 1000
+
+==> /etc/temporal/matching.yaml (0640 root:temporal, role "matching", restart role) <==
+# enable-template
+# Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
+log: { stdout: true, level: info }
+persistence:
+  numHistoryShards: 512
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 3
+        maxIdleConns: 3
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal_visibility
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 1
+        maxIdleConns: 1
+        maxConnLifetime: 1h
+global:
+  membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
+  pprof: { port: 7935, host: 127.0.0.1 }
+  metrics:
+    prometheus: { framework: tally, timerType: histogram, listenAddress: "0.0.0.0:9235" }
+services:
+  frontend: { rpc: { grpcPort: 7233, membershipPort: 6933, httpPort: 7243, bindOnIP: 0.0.0.0 } }
+  history:  { rpc: { grpcPort: 7234, membershipPort: 6934, bindOnIP: 0.0.0.0 } }
+  matching: { rpc: { grpcPort: 7235, membershipPort: 6935, bindOnIP: 0.0.0.0 } }
+  worker:   { rpc: { grpcPort: 7239, membershipPort: 6939, bindOnIP: 0.0.0.0 } }
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: tops-e2e
+  currentClusterName: tops-e2e
+  clusterInformation:
+    tops-e2e: { enabled: true, initialFailoverVersion: 1, rpcName: frontend, rpcAddress: 127.0.0.1:7233 }
+dcRedirectionPolicy: { policy: noop }
+dynamicConfigClient:
+  filepath: /etc/temporal/dynamicconfig-matching.yaml
+  pollInterval: 10s
+
+==> /etc/temporal/matching.env (0640 root:temporal, role "matching", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
+GOMEMLIMIT=313MiB
+GOMAXPROCS=2
+
+==> /etc/systemd/system/temporal@matching.service.d/limits.conf (0644 root:root, role "matching", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
+[Service]
+MemoryHigh=417M
+MemoryMax=464M
+CPUWeight=108
+
+==> /etc/temporal/dynamicconfig-matching.yaml (0640 root:temporal, role "matching", hot or restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
+limit.maxIDLength:
+  - value: 1000
+
+==> /etc/temporal/worker.yaml (0640 root:temporal, role "worker", restart role) <==
+# enable-template
+# Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.
+log: { stdout: true, level: info }
+persistence:
+  numHistoryShards: 512
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 2
+        maxIdleConns: 2
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal_visibility
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 1
+        maxIdleConns: 1
+        maxConnLifetime: 1h
+global:
+  membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
+  pprof: { port: 7939, host: 127.0.0.1 }
+  metrics:
+    prometheus: { framework: tally, timerType: histogram, listenAddress: "0.0.0.0:9239" }
+services:
+  frontend: { rpc: { grpcPort: 7233, membershipPort: 6933, httpPort: 7243, bindOnIP: 0.0.0.0 } }
+  history:  { rpc: { grpcPort: 7234, membershipPort: 6934, bindOnIP: 0.0.0.0 } }
+  matching: { rpc: { grpcPort: 7235, membershipPort: 6935, bindOnIP: 0.0.0.0 } }
+  worker:   { rpc: { grpcPort: 7239, membershipPort: 6939, bindOnIP: 0.0.0.0 } }
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: tops-e2e
+  currentClusterName: tops-e2e
+  clusterInformation:
+    tops-e2e: { enabled: true, initialFailoverVersion: 1, rpcName: frontend, rpcAddress: 127.0.0.1:7233 }
+dcRedirectionPolicy: { policy: noop }
+dynamicConfigClient:
+  filepath: /etc/temporal/dynamicconfig-worker.yaml
+  pollInterval: 10s
+
+==> /etc/temporal/worker.env (0640 root:temporal, role "worker", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.
+GOMEMLIMIT=146MiB
+GOMAXPROCS=2
+
+==> /etc/systemd/system/temporal@worker.service.d/limits.conf (0644 root:root, role "worker", restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.
+[Service]
+MemoryHigh=195M
+MemoryMax=217M
+CPUWeight=22
+
+==> /etc/temporal/dynamicconfig-worker.yaml (0640 root:temporal, role "worker", hot or restart role) <==
+# Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.
+limit.maxIDLength:
+  - value: 1000
+
