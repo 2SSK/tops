@@ -1,0 +1,56 @@
+# enable-template
+# Rendered by tops for [[.Env]]/[[.Cluster]]/[[.Node]] role [[.Role.Role]]. tops apply overwrites hand edits.
+log: { stdout: true, level: [[.LogLevel]] }
+persistence:
+  numHistoryShards: [[.Shards]]
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal
+        connectAddr: "[[.PostgresAddr]]"
+        connectProtocol: tcp
+        user: "[[.Postgres.User]]"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: [[.Role.Size.DBPool]]
+        maxIdleConns: [[.Role.Size.DBPool]]
+        maxConnLifetime: 1h
+[[- if .Postgres.TLS]]
+        tls: { enabled: true, enableHostVerification: true, serverName: "[[.Postgres.Host]]" }
+[[- end]]
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal_visibility
+        connectAddr: "[[.PostgresAddr]]"
+        connectProtocol: tcp
+        user: "[[.Postgres.User]]"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: [[.Role.Size.DBVisPool]]
+        maxIdleConns: [[.Role.Size.DBVisPool]]
+        maxConnLifetime: 1h
+[[- if .Postgres.TLS]]
+        tls: { enabled: true, enableHostVerification: true, serverName: "[[.Postgres.Host]]" }
+[[- end]]
+global:
+  membership: { maxJoinDuration: 30s, broadcastAddress: "[[.Address]]" }
+  pprof: { port: [[.Ports.Pprof]], host: 127.0.0.1 }
+  metrics:
+    prometheus: { framework: tally, timerType: histogram, listenAddress: "0.0.0.0:[[.Ports.Metrics]]" }
+services:
+[[- range .All]]
+  [[printf "%-9s" (print .Role ":")]] { rpc: { grpcPort: [[.GRPC]], membershipPort: [[.Membership]],[[if .HTTP]] httpPort: [[.HTTP]],[[end]] bindOnIP: 0.0.0.0 } }
+[[- end]]
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: [[.Cluster]]
+  currentClusterName: [[.Cluster]]
+  clusterInformation:
+    [[.Cluster]]: { enabled: true, initialFailoverVersion: 1, rpcName: frontend, rpcAddress: [[.Frontend]] }
+dcRedirectionPolicy: { policy: noop }
+dynamicConfigClient:
+  filepath: /etc/temporal/dynamicconfig-[[.Role.Role]].yaml
+  pollInterval: 10s

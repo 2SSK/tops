@@ -1,0 +1,51 @@
+# enable-template
+# Rendered by tops for lab/tops-e2e/vps-01 role history. tops apply overwrites hand edits.
+log: { stdout: true, level: info }
+persistence:
+  numHistoryShards: 512
+  defaultStore: default
+  visibilityStore: visibility
+  datastores:
+    default:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 12
+        maxIdleConns: 12
+        maxConnLifetime: 1h
+    visibility:
+      sql:
+        pluginName: postgres12
+        databaseName: temporal_visibility
+        connectAddr: "10.80.0.20:5432"
+        connectProtocol: tcp
+        user: "temporal"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
+        maxConns: 3
+        maxIdleConns: 3
+        maxConnLifetime: 1h
+global:
+  membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.11" }
+  pprof: { port: 7934, host: 127.0.0.1 }
+  metrics:
+    prometheus: { framework: tally, timerType: histogram, listenAddress: "0.0.0.0:9234" }
+services:
+  frontend: { rpc: { grpcPort: 7233, membershipPort: 6933, httpPort: 7243, bindOnIP: 0.0.0.0 } }
+  history:  { rpc: { grpcPort: 7234, membershipPort: 6934, bindOnIP: 0.0.0.0 } }
+  matching: { rpc: { grpcPort: 7235, membershipPort: 6935, bindOnIP: 0.0.0.0 } }
+  worker:   { rpc: { grpcPort: 7239, membershipPort: 6939, bindOnIP: 0.0.0.0 } }
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: tops-e2e
+  currentClusterName: tops-e2e
+  clusterInformation:
+    tops-e2e: { enabled: true, initialFailoverVersion: 1, rpcName: frontend, rpcAddress: 127.0.0.1:7233 }
+dcRedirectionPolicy: { policy: noop }
+dynamicConfigClient:
+  filepath: /etc/temporal/dynamicconfig-history.yaml
+  pollInterval: 10s
