@@ -16,7 +16,7 @@ func TestRootHelpShowsGroups(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	for _, group := range []string{"Spec:", "Integrate:"} {
+	for _, group := range []string{"Spec:", "Integrate:", "Change:"} {
 		if !strings.Contains(out.String(), group) {
 			t.Errorf("help is missing group %q\n%s", group, out.String())
 		}

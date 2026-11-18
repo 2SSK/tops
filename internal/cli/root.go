@@ -45,6 +45,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.AddGroup(
 		&cobra.Group{ID: "spec", Title: "Spec:"},
 		&cobra.Group{ID: "integrate", Title: "Integrate:"},
+		&cobra.Group{ID: "change", Title: "Change:"},
 	)
 	root.SetHelpCommandGroupID("integrate")
 	root.SetCompletionCommandGroupID("integrate")
@@ -55,6 +56,7 @@ func NewRootCommand(opts *Options) *cobra.Command {
 	root.AddCommand(newDiffCommand(opts))
 	root.AddCommand(newInitCommand(opts))
 	root.AddCommand(newNodeCommand(opts))
+	root.AddCommand(newCapacityCommand(opts))
 
 	// Cobra adds completion only to a root that has subcommands, so this comes last.
 	root.InitDefaultCompletionCmd()
