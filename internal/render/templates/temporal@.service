@@ -1,0 +1,24 @@
+# Rendered by tops. tops apply overwrites hand edits.
+[Unit]
+Description=Temporal %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=temporal
+Group=temporal
+EnvironmentFile=/etc/temporal/temporal.env
+EnvironmentFile=/etc/temporal/%i.env
+ExecStart=/opt/temporal/current/temporal-server --config-file /etc/temporal/%i.yaml --allow-no-auth start --service %i
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+LimitNOFILE=65536
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/temporal
+
+[Install]
+WantedBy=multi-user.target

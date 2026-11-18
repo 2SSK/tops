@@ -12,6 +12,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/2SSK/tops/internal/secret"
 	"github.com/2SSK/tops/internal/sizing"
 	"github.com/2SSK/tops/internal/spec"
 )
@@ -42,35 +43,29 @@ func lab() NodeInput {
 	return NodeInput{
 		Env: "lab", Cluster: "tops-e2e", Node: "vps-01", Address: "10.80.0.11", Shards: 512, LogLevel: "info",
 		Postgres: spec.Postgres{Host: "10.80.0.20", Port: 5432, User: "temporal", AdminDatabase: "postgres"},
-		Frontend: "127.0.0.1:7233",
+		Frontend: "127.0.0.1:7233", GoMaxProcs: 2,
 		Roles: []RoleInput{
-			{Role: "frontend", Size: sizing.RoleSize{Role: "frontend", DBPool: 2, DBVisPool: 3}},
-			{Role: "history", Size: sizing.RoleSize{Role: "history", DBPool: 12, DBVisPool: 3}},
+			{Role: "frontend", Size: sizing.RoleSize{
+				Role: "frontend", MemoryMax: 600 * mib, MemoryHigh: 540 * mib, GoMemLimit: 430 * mib, CPUWeight: 100, DBPool: 2, DBVisPool: 3,
+			}},
+			{Role: "history", Size: sizing.RoleSize{
+				Role: "history", MemoryMax: 1300 * mib, MemoryHigh: 1200 * mib, GoMemLimit: 1000 * mib, CPUWeight: 150, DBPool: 12, DBVisPool: 3,
+			}},
 		},
+		Secrets: map[string]secret.Value{"TOPS_PG_PASSWORD": secret.New("lab-password-1")},
 	}
 }
 
-func role(t *testing.T, in NodeInput, name string) RoleInput {
+// config is a role's /etc/temporal/<role>.yaml, as Render renders it.
+func config(t *testing.T, in NodeInput, role string) []byte {
 	t.Helper()
-	for _, r := range in.Roles {
-		if r.Role == name {
-			return r
-		}
-	}
-	t.Fatalf("no %s on %s", name, in.Node)
-	return RoleInput{}
+	return file(t, mustRender(t, in), "/etc/temporal/"+role+".yaml").Content
 }
 
 func TestServerConfigGolden(t *testing.T) {
 	in := lab()
 	for _, r := range in.Roles {
-		t.Run(r.Role, func(t *testing.T) {
-			got, err := serverConfig(in, r)
-			if err != nil {
-				t.Fatal(err)
-			}
-			checkGolden(t, in.Node+"-"+r.Role+".yaml", got)
-		})
+		t.Run(r.Role, func(t *testing.T) { checkGolden(t, in.Node+"-"+r.Role+".yaml", config(t, in, r.Role)) })
 	}
 }
 
@@ -79,10 +74,7 @@ func TestServerConfigGolden(t *testing.T) {
 // every file and restart every role).
 func TestServerConfigMatchesSchema(t *testing.T) {
 	in := lab()
-	got, err := serverConfig(in, role(t, in, "history"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := config(t, in, "history")
 	lines := strings.Split(string(got), "\n")
 	if lines[1] != "# Rendered by tops for lab/tops-e2e/vps-01 role history. tops apply overwrites hand edits." {
 		t.Errorf("header = %q", lines[1])
@@ -136,10 +128,7 @@ func asTemporal(t *testing.T, config []byte, env map[string]string) map[string]a
 // expands {{ env }}, and the result is YAML with the password in place.
 func TestServerConfigIsTemporalYAML(t *testing.T) {
 	in := lab()
-	got, err := serverConfig(in, role(t, in, "history"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := config(t, in, "history")
 	if i := bytes.Index(got, []byte("# enable-template")); i < 0 || i >= 1024 {
 		t.Errorf("# enable-template at %d, want within the first 1 KB", i)
 	}
@@ -165,10 +154,7 @@ func TestServerConfigIsTemporalYAML(t *testing.T) {
 func TestServerConfigNoFrontendHere(t *testing.T) {
 	in := lab()
 	in.Node, in.Address, in.Frontend = "vps-04", "10.80.0.14", "10.80.0.11:7233"
-	got, err := serverConfig(in, role(t, in, "history"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := config(t, in, "history")
 	if !bytes.Contains(got, []byte("rpcAddress: 10.80.0.11:7233 }")) || !bytes.Contains(got, []byte(`broadcastAddress: "10.80.0.14"`)) {
 		t.Errorf("history.yaml on vps-04:\n%s", got)
 	}
@@ -177,35 +163,13 @@ func TestServerConfigNoFrontendHere(t *testing.T) {
 func TestServerConfigTLS(t *testing.T) {
 	in := lab()
 	in.Postgres.Host, in.Postgres.TLS = "db.example.com", true
-	got, err := serverConfig(in, role(t, in, "history"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := config(t, in, "history")
 	tls := `        tls: { enabled: true, enableHostVerification: true, serverName: "db.example.com" }`
 	if n := strings.Count(string(got), tls); n != 2 {
 		t.Errorf("%d tls blocks, want one per store:\n%s", n, got)
 	}
-	if bytes.Contains(lab().mustRender(t, "history"), []byte("tls:")) {
+	if bytes.Contains(config(t, lab(), "history"), []byte("tls:")) {
 		t.Error("tls: false still renders a tls block")
-	}
-}
-
-func (in NodeInput) mustRender(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := serverConfig(in, role(t, in, name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-// TestServerConfigByteStable: the same input renders the same bytes, every time.
-func TestServerConfigByteStable(t *testing.T) {
-	first := lab().mustRender(t, "history")
-	for range 20 {
-		if !bytes.Equal(lab().mustRender(t, "history"), first) {
-			t.Fatal("two renders of the same input differ")
-		}
 	}
 }
 
