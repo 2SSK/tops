@@ -603,7 +603,7 @@ nginx and `/health` are installed on nodes that run `frontend` or `ui`; node_exp
 
 ```yaml
 # enable-template
-# Rendered by tops 0.3.0 for lab/tops-e2e/vps-01 role history. tops apply overwrites hand edits.
+# Rendered by tops for lab/tops-e2e/vps-01 role history. tops apply overwrites hand edits.
 log: { stdout: true, level: info }
 persistence:
   numHistoryShards: 512
@@ -617,7 +617,7 @@ persistence:
         connectAddr: "10.80.0.20:5432"
         connectProtocol: tcp
         user: "temporal"
-        password: "{{ env "TOPS_PG_PASSWORD" }}"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
         maxConns: 12
         maxIdleConns: 12
         maxConnLifetime: 1h
@@ -628,7 +628,7 @@ persistence:
         connectAddr: "10.80.0.20:5432"
         connectProtocol: tcp
         user: "temporal"
-        password: "{{ env "TOPS_PG_PASSWORD" }}"
+        password: {{ env "TOPS_PG_PASSWORD" | quote }}
         maxConns: 3
         maxIdleConns: 3
         maxConnLifetime: 1h
@@ -662,13 +662,13 @@ runs no frontend, `rpcAddress` is the first frontend node's `<address>:7233`. Th
 ### `/etc/temporal/history.env`, `temporal.env`, limits
 
 ```
-# history.env - rendered by tops. 0640.
+# Rendered by tops for lab/tops-e2e/vps-01 role history. tops apply overwrites hand edits.
 GOMEMLIMIT=1000MiB
 GOMAXPROCS=2
 ```
 
 ```
-# temporal.env - rendered by tops. 0600 root. Shared by every role on the node.
+# Rendered by tops for lab/tops-e2e/vps-01, shared by every role. tops apply overwrites hand edits.
 TOPS_PG_PASSWORD=…
 ```
 

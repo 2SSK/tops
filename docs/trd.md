@@ -392,8 +392,8 @@ cannot drift from its evidence. Re-measured for every new supported Temporal min
 
 - Templates are `text/template` files embedded in `internal/render`, delimiters `[[ ]]` so Temporal's own
   `{{ env "X" }}` passes through. Values are written literally, so diffs show real numbers. Secrets are the
-  exception: config references `{{ env "TOPS_PG_PASSWORD" }}`; the value lives only in
-  `/etc/temporal/temporal.env` (0600).
+  exception: config references `{{ env "TOPS_PG_PASSWORD" | quote }}` (sprig's quote: any password stays
+  valid YAML); the value lives only in `/etc/temporal/temporal.env` (0600).
 - Input: one `render.NodeInput` per node (cluster, node, its roles with sizing results, peers per role,
   merged dynamic config per role, ports). Templates contain no logic beyond `if`/`range`.
 - Output: `render.FileSet` = ordered `{Path, Content, Mode, Owner, Group, Role, Effect}`. Byte-stable.
