@@ -31,6 +31,7 @@ type File struct {
 	Group   string
 	Role    string // "" for a file every role on the node shares
 	Effect  Effect
+	Secret  bool // KEY=VALUE lines of secrets: plan shows the keys, never a value
 }
 
 // FileSet is every file tops installs on a node: the shared files first, then each role's in
@@ -50,7 +51,7 @@ type roleData struct {
 func Render(in NodeInput) (FileSet, error) {
 	todo := []fromTemplate{
 		{File{Path: "/etc/systemd/system/temporal@.service", Mode: 0o644, Owner: "root", Group: "root", Effect: RestartAll}, "temporal@.service", nil},
-		{File{Path: "/etc/temporal/temporal.env", Mode: 0o600, Owner: "root", Group: "root", Effect: RestartAll}, "temporal.env", in},
+		{File{Path: "/etc/temporal/temporal.env", Mode: 0o600, Owner: "root", Group: "root", Effect: RestartAll, Secret: true}, "temporal.env", in},
 	}
 	for _, r := range in.Roles {
 		todo = append(todo, roleFiles(in, r)...)

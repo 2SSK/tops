@@ -5,6 +5,7 @@ go 1.26.0
 toolchain go1.26.11
 
 require (
+	github.com/aymanbagabas/go-udiff v0.4.1
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/jackc/pgx/v5 v5.13.0

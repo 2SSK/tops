@@ -61,6 +61,11 @@ func TestRenderFileSet(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("file set:\n got %v\nwant %v", got, want)
 	}
+	for _, f := range mustRender(t, lab()) {
+		if f.Secret != (f.Path == "/etc/temporal/temporal.env") {
+			t.Errorf("%s: Secret = %v; only temporal.env holds secrets", f.Path, f.Secret)
+		}
+	}
 }
 
 // TestRenderGolden pins the bytes of every file kind on vps-01.
