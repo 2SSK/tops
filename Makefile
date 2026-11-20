@@ -5,7 +5,7 @@ LDFLAGS := -s -w -X github.com/2SSK/tops/internal/cli.Version=$(VERSION)
 # One Temporal version per supported minor; make generate writes catalog-<minor>.json.
 CATALOG_VERSIONS := $(shell cat tools/cataloggen/versions.txt)
 
-.PHONY: build build-linux test helper-test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset
+.PHONY: build build-linux test helper-test cover lint vuln cross check generate clean lab-up lab-down lab-renew lab-reset e2e
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/tops/
@@ -78,5 +78,12 @@ lab-reset: $(LAB_SECRETS)
 	$(LAB_PG) down --volumes
 	$(MAKE) lab-renew
 
+# T2 acceptance and on: the release binary against VPSLAB, from a reset lab (one cluster at a
+# time). Writes e2e-report.json (go test -json) and e2e-report.txt (its output).
+LAB ?= lab
+e2e: build lab-reset
+				go test -tags e2e -count=1 -timeout 60m -json ./test/e2e/ -args -lab=$(abspath $(LAB)) -tops=$(abspath bin/tops) > e2e-report.json;	\
+				status=$$?; jq -rj 'select(.Action == "output") | .Output' e2e-report.json > e2e-report.txt; cat e2e-report.txt; exit $$status
+
 clean:
-	rm -rf bin coverage.out
+	rm -rf bin coverage.out e2e-report.json e2e-report.txt

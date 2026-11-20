@@ -204,7 +204,7 @@ func (d *planDocument) exit() error {
 // happens to the role, then a summary.
 func planPage(d *planDocument, st term.Style) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s (%s)  plan for %d nodes\n", d.Env, d.Cluster, len(d.Nodes))
+	fmt.Fprintf(&b, "%s (%s)  plan for %d nodes%s\n", d.Env, d.Cluster, len(d.Nodes), validatedOn(d.Nodes))
 	for _, r := range d.Refusals {
 		fmt.Fprintf(&b, "\n%s %s: %s\n  %s\n", st.Mark(term.Fail), r.What, r.Why, r.Fix)
 	}
@@ -216,6 +216,19 @@ func planPage(d *planDocument, st term.Style) string {
 	}
 	b.WriteString(d.summary())
 	return b.String()
+}
+
+// validatedOn says on how many nodes the target Temporal checked the rendered files, so a
+// plan never looks validated when it was not.
+func validatedOn(nodes []plan.NodePlan) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	ok := countOf(nodes, func(n plan.NodePlan) bool { return n.Validated.OK })
+	if ok == len(nodes) {
+		return fmt.Sprintf(" · validated with temporal-server %s on %d nodes", nodes[0].Validated.Release, ok)
+	}
+	return fmt.Sprintf(" · validated on %d of %d nodes", ok, len(nodes))
 }
 
 // summary is the plan's last lines: what it counts, and the command that applies it.

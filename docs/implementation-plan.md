@@ -828,8 +828,8 @@ never point the harness at temporalScale.
 | Per-role limits for every listed role | `tops -e lab capacity --json \| jq -e '[.nodes[].roles[]] \| length == 10'` (4 + 4 + 2)                                                                                                                       |
 | Plan lists every file, exit 2         | `tops -e lab plan; test $? -eq 2`                                                                                                                                                                             |
 | Plan changes nothing (H1)             | e2e `TestPlanTouchesNothing`: sha256 of `/etc/temporal`, `/opt/temporal`, `/var/lib/tops` before = after; `/run/tops` empty                                                                                   |
-| Helper uploaded once                  | second `tops -e lab plan --debug 2>&1 \| grep -c 'helper upload'` = 0                                                                                                                                         |
-| Too-small node refused                | e2e: a temp env whose vps-03 pins `history.memoryMax` above what the cap leaves: `tops -e small plan --json \| jq -e '.refusals[0].code == "refused.node_too_small"'`; exit 3 (independent of the final caps) |
+| Helper uploaded once                  | e2e `TestHelperUploadedOnce`: second `tops -e lab plan --debug 2>&1 \| grep -c 'sudo -n sh -c'` = 0 (the upload is the only `sh -c`, H2)                                                                                                                                         |
+| Too-small node refused                | e2e: a temp env whose vps-03 pins `matching.memoryMax: 4G`, above its cap: `tops -e small plan --json \| jq -e '.refusals[0].code == "refused.node_too_small"'`; exit 3 (independent of the final caps) |
 | Unknown host key refused              | e2e: a node's line removed from a copy of `known_hosts`: exit 1 `ssh.host_key_unknown`                                                                                                                        |
 
 # T3: bootstrap and status (v0.3.0)

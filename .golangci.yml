@@ -2,7 +2,7 @@ version: "2"
 
 # Lint the files behind build tags too: the helper tests run only with make helper-test.
 run:
-  build-tags: [helper]
+  build-tags: [helper, e2e]
 
 linters:
   enable:

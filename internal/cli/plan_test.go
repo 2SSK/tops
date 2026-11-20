@@ -151,7 +151,7 @@ func TestPlanPageBare(t *testing.T) {
 	}
 	page := planPage(d, term.Style{Unicode: true})
 	contains(t, page,
-		"lab (tops-e2e)  plan for 3 nodes\n",
+		"lab (tops-e2e)  plan for 3 nodes · validated on 0 of 3 nodes\n",
 		"\nvps-03\n  ! not validated: 1.31.3 not staged\n  shared\n    + /etc/systemd/system/temporal@.service",
 		"\n  matching\n    + /etc/temporal/matching.yaml",
 		"    + starts matching\n",
@@ -314,5 +314,22 @@ func TestNodePageStopAndRemove(t *testing.T) {
 	want := "\nvps-03\n  shared\n    - /etc/temporal/worker.yaml" + strings.Repeat(" ", 61-len("/etc/temporal/worker.yaml")) + "remove\n  worker\n    - stops worker\n"
 	if got != want {
 		t.Errorf("page:\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestValidatedOn: the header counts the nodes whose files the target Temporal checked.
+func TestValidatedOn(t *testing.T) {
+	ok := plan.NodePlan{Validated: plan.Validated{OK: true, Release: "1.31.3"}}
+	for _, tt := range []struct {
+		nodes []plan.NodePlan
+		want  string
+	}{
+		{nil, ""},
+		{[]plan.NodePlan{ok, ok}, " · validated with temporal-server 1.31.3 on 2 nodes"},
+		{[]plan.NodePlan{ok, {}}, " · validated on 1 of 2 nodes"},
+	} {
+		if got := validatedOn(tt.nodes); got != tt.want {
+			t.Errorf("validatedOn(%d nodes) = %q, want %q", len(tt.nodes), got, tt.want)
+		}
 	}
 }
