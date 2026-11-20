@@ -79,3 +79,15 @@ func (c *Client) logHelper(op wire.Op, stderr []byte) {
 		c.log.Debug("helper", "op", op, "record", string(bytes.TrimSpace(line)))
 	}
 }
+
+// Facts asks the node's helper what is there now, compared with tops would write.
+func (n *Node) Facts(ctx context.Context, args wire.FactsArgs) (wire.Facts, error) {
+	req := n.req
+	// FactsArgs is a map of strings and a list of strings: it always encodes.
+	req.Args, _ = json.Marshal(args)
+	var f wire.Facts
+	if err := n.call(ctx, n.SHA256, wire.OpFacts, req, &f); err != nil {
+		return wire.Facts{}, err
+	}
+	return f, nil
+}

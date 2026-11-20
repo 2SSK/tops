@@ -26,6 +26,7 @@ type capacityDocument struct {
 	Headroom    sizing.Headroom   `json:"headroom"`
 	DB          dbCapacity        `json:"db"`
 	refusals    []error           // in the order shown; the first decides the exit
+	Sized       []sizing.NodeSize // the nodes that fit, in spec order
 }
 
 type capacityConstants struct {
@@ -86,8 +87,7 @@ func capacity(cmd *cobra.Command, opts *Options, env *fleet.Env) (*capacityDocum
 	if err != nil {
 		return nil, err
 	}
-	version := env.Cluster.Temporal.Version
-	consts, err := sizing.For(version[:strings.LastIndex(version, ".")])
+	consts, err := sizingConstants(env)
 	if err != nil {
 		return nil, err
 	}
@@ -96,14 +96,26 @@ func capacity(cmd *cobra.Command, opts *Options, env *fleet.Env) (*capacityDocum
 		return nil, err
 	}
 	defer c.Close()
+	return sizeNodes(cmd, env, consts, secrets, c)
+}
 
+// sizingConstants are the sizing constants of the spec's Temporal minor: 1.31 for 1.31.3.
+func sizingConstants(env *fleet.Env) (sizing.Constants, error) {
+	v := env.Cluster.Temporal.Version
+	return sizing.For(v[:strings.LastIndex(v, ".")])
+}
+
+// sizeNodes sizes the connnected nodes from their hellos, and reads PostgreSQL's limits
+// through a tunnel from the first node.
+func sizeNodes(cmd *cobra.Command, env *fleet.Env, consts sizing.Constants, secrets fleet.Secrets, c *connected) (*capacityDocument, error) {
 	hellos := make([]wire.Hello, len(c.nodes))
 	for i, n := range c.nodes {
 		hellos[i] = n.Hello
 	}
 	pg := env.Cluster.Persistence.Postgres
 	limits := func() (sizing.DBLimits, error) {
-		return postgres.Limits(cmd.Context(), postgres.Config{Host: pg.Host, Port: pg.Port, User: pg.User, Password: secrets["TOPS_PG_PASSWORD"], Database: pg.AdminDatabase, TLS: pg.TLS, Dial: c.nodes[0].DialContext})
+		return postgres.Limits(cmd.Context(),
+			postgres.Config{Host: pg.Host, Port: pg.Port, User: pg.User, Password: secrets["TOPS_PG_PASSWORD"], Database: pg.AdminDatabase, TLS: pg.TLS, Dial: c.nodes[0].DialContext})
 	}
 	return sizeEnv(env, consts, hellos, limits)
 }
@@ -135,6 +147,7 @@ func sizeEnv(env *fleet.Env, consts sizing.Constants, hellos []wire.Hello, limit
 		}
 		doc.Nodes = append(doc.Nodes, nc)
 	}
+	doc.Sized = sized
 	doc.Headroom = sizing.CheckHeadroom(consts, env.Cluster.Shards, sized)
 	if err := doc.Headroom.Refusal(); err != nil {
 		doc.refusals = append(doc.refusals, err)

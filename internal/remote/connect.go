@@ -78,10 +78,11 @@ func (d *Dialer) binary(ctx context.Context, arch string) (binary, error) {
 // Node is a connected node whose helper answered hello: what every command works with.
 type Node struct {
 	*Client
-	Arch     string     // GOARCH, from uname -m
-	SHA256   string     // the helper's
-	Hello    wire.Hello // what the helper detected
-	Uploaded bool       // this run installed the helper
+	Arch     string       // GOARCH, from uname -m
+	SHA256   string       // the helper's
+	Hello    wire.Hello   // what the helper detected
+	Uploaded bool         // this run installed the helper
+	req      wire.Request // the run's: every later op carries its id
 }
 
 // Connect dials a node, runs the preflight, and makes sure the helper of this exact build is
@@ -108,8 +109,8 @@ func (d *Dialer) connect(ctx context.Context, c *Client, req wire.Request) (*Nod
 	if err != nil {
 		return nil, err
 	}
-	n := &Node{Client: c, Arch: arch, SHA256: bin.sha256}
 	req.Args = nil
+	n := &Node{Client: c, Arch: arch, SHA256: bin.sha256, req: req}
 	err = c.call(ctx, bin.sha256, wire.OpHello, req, &n.Hello)
 	if errors.Is(err, errNoHelper) {
 		if err := c.upload(ctx, bin); err != nil {
