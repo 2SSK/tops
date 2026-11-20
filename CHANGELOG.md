@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
+### Added
+
+- `tops -e <env> plan`: shows, per node and role, every file apply would create, update or remove (with a unified diff), which roles would start, stop or restart, and drift: files edited by hand since tops last wrote them. It changes nothing on a node (checked by the e2e suite). Exit 0 nothing to do, 2 changes or drift pending, 3 a refusal, 5 PostgreSQL unreachable. `--json` prints a `Plan` document. `temporal.env` diffs by key: values are `***`, a changed one `*** (changed)`; no secret appears on the page or in JSON.
+- `tops -e <env> capacity`: each node's detected memory and cores (from its cgroup), each role's `MemoryMax`, `MemoryHigh`, `GOMEMLIMIT`, `CPUWeight` and database pools, the shard headroom if a history node fails, and the PostgreSQL connection budget. `--json` prints a `Capacity` document. The sizing constants are placeholders until measured on VPSLAB; the page says so.
+- `nodes[].pin.<role>` fixes a role's `memoryMax`, `cpuWeight`, `dbPool` or `dbVisibilityPool` on one node instead of the formula.
+- Refusals before anything is written: `refused.node_too_small`, `refused.headroom` and `refused.db_budget` (exit 3).
+- Rendering per role: `/etc/temporal/<role>.yaml`, `<role>.env` (`GOMEMLIMIT`, `GOMAXPROCS`), `dynamicconfig-<role>.yaml` (the merged settings that role reads), `temporal@<role>.service.d/limits.conf`, the shared `temporal.env` and `temporal@.service`. Ports come from one table; any password stays valid YAML (`{{ env "TOPS_PG_PASSWORD" | quote }}`); roles find frontends through membership (no `publicClient`).
+- SSH to the nodes: host keys only from `ssh.knownHosts` (no trust on first use, `ssh.host_key_unknown`), `ssh.key` or the agent, never a password; bounded dial, keepalive, preflight (`uname -m`, `sudo -n`).
+- The node helper is uploaded once per build to `/usr/local/lib/tops/<sha16>/tops` and called over SSH with the request on stdin; every command tops sends a node is one of a fixed list. A released tops fetches the helper for another architecture from its release and checks it against `checksums.txt`.
+- `tops -e <env> version` reports each node's helper; `--debug` logs every command tops runs and the helper's own log on stderr.
+- PostgreSQL's connection limits are read through an SSH tunnel from the first node, never directly from the workstation.
+- `make e2e` resets VPSLAB and runs the T2 acceptance against the binary; the reports are attached to this release.
+
+### Fixed
+
+- Built with Go 1.26.11 for the standard library's `net/http` fixes; `make vuln` scans with the toolchain in `go.mod`.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added
@@ -35,5 +54,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Releases: linux amd64/arm64 and darwin arm64 archives with shell completions, `checksums.txt`, SBOMs and build attestations. `go install` reports its module version.
 - A hidden `tops node <op>` command: the node helper later versions run over SSH (`hello`, `facts`). It is internal, not for direct use, and its protocol may change.
 
-[Unreleased]: https://github.com/2SSK/tops/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/2SSK/tops/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/2SSK/tops/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/2SSK/tops/releases/tag/v0.1.0
