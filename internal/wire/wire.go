@@ -20,6 +20,7 @@ type Op string
 const (
 	OpHello Op = "hello"
 	OpFacts Op = "facts"
+	OpStage Op = "stage"
 )
 
 // Request is the one JSON document a helper op reads on stdin.
@@ -133,4 +134,9 @@ type Download struct {
 	URL     string   `json:"url"`
 	SHA256  string   `json:"sha256"`
 	Extract []string `json:"extract"` // the binaries to take from the archive
+}
+
+// StageResult is what stage installed; empty when everything was there already.
+type StageResult struct {
+	Changed []string `json:"changed"`
 }

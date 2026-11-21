@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -31,10 +32,12 @@ type Host struct {
 	Affinity func() (int, error)
 	Clock    func() (bool, error)
 	Systemd  func(ctx context.Context) (Systemd, error)
+	AddUser  func(ctx context.Context, name, home string) error // useradd --system
+	HTTP     *http.Client                                       // stage's downloads
 }
 
 // System is the machine the helper runs on.
-var System = Host{Root: "/", Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced, Systemd: systemBus}
+var System = Host{Root: "/", Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced, Systemd: systemBus, AddUser: addUser, HTTP: &http.Client{Timeout: stageTimeout}}
 
 // Memory returns the effective memory in bytes: MemTotal, lowered by the memory.max of
 // PID 1's cgroup or of any ancestor visible from here.

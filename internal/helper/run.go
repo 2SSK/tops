@@ -46,6 +46,7 @@ type handler func(ctx context.Context, env Env, args json.RawMessage) (any, erro
 var handlers = map[wire.Op]handler{
 	wire.OpHello: hello,
 	wire.OpFacts: facts,
+	wire.OpStage: stage,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -105,6 +106,17 @@ func facts(ctx context.Context, env Env, args json.RawMessage) (any, error) {
 		}
 	}
 	return env.Host.Facts(ctx, a)
+}
+
+func stage(ctx context.Context, env Env, args json.RawMessage) (any, error) {
+	var s wire.Stage
+	if err := decodeArgs(args, &s); err != nil {
+		return nil, err
+	}
+	if err := checkStage(s); err != nil {
+		return nil, badRequest("args", err)
+	}
+	return env.Host.Stage(ctx, s)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so
