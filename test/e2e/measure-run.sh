@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-USAGE="usage: $0 <idle|load|double> <run number> <vps-01|vps-02|vps-03>"
+USAGE="usage: $0 <idle|load|double|alone-<role>|shards-<128|256|512>> <run number> <vps-01|vps-02|vps-03>"
 PHASE=${1:?$USAGE}
 RUN=${2:?$USAGE}
 NODE=${3:?$USAGE}
@@ -15,68 +15,87 @@ DIR=test/e2e/samples
 NODES=(vps-01 vps-02 vps-03)
 
 case $NODE in
-    vps-01) ADDR=10.80.0.11 ;;
-    vps-02) ADDR=10.80.0.12 ;;
-    vps-03) ADDR=10.80.0.13 ;;
-    *) echo "$USAGE" >&2 && exit 2 ;;
+vps-01) ADDR=10.80.0.11 ;;
+vps-02) ADDR=10.80.0.12 ;;
+vps-03) ADDR=10.80.0.13 ;;
+*) echo "$USAGE" >&2 && exit 2 ;;
 esac
 
+# alone-<role>: that role by itself on vps-01, the rest of the clutser on vps-02 and vps-03, for
+# floor_r. shards_<n>: a new cluster of n shards on an empty database, for perShard; the count is
+# fixed when the database is created, so end with shards-512 to leave the measured cluster.
+FRESH=0
 case $PHASE in
-    idle) RATE=0 ;;
-    load) RATE=5 ;;
-    double) RATE=10 ;;
-    *) echo "$USAGE" >&2 exit 2 ;;
+idle) RATE=0 ;;
+load) RATE=5 ;;
+double) RATE=10 ;;
+alone-frontend | alone-history | alone-matching | alone-worker)
+	RATE=0
+	export ONLY=${PHASE#alone-}
+	;;
+shards-128 | shards-256 | shards-512)
+	RATE=0 FRESH=1
+	export SHARDS=${PHASE#shards-}
+	;;
+*) echo "$USAGE" exit 2 >&2 ;;
 esac
 
 node() { ssh -F lab/keys/ssh_config "$@"; }
 
 # oom_kill never goes back down, so a run compares its own before and after.
 ooms() {
-    for n in "${NODES[@]}"; do
-        node "$n" awk "'\$1==\"oom_kill\" {print \$2}'" /sys/fs/cgroup/memory.events
-    done | paste -sd+ | bc
+	for n in "${NODES[@]}"; do
+		node "$n" awk "'\$1==\"oom_kill\" {print \$2}'" /sys/fs/cgroup/memory.events
+	done | paste -sd+ | bc
 }
 
 restarts() {
-    for n in "${NODES[@]}"; do
-        node "$n" 'for u in frontend history matching worker; do systemctl show -p NRestarts --value m-$u; done'
-    done | paste -sd+ | bc
+	for n in "${NODES[@]}"; do
+		node "$n" 'for u in frontend history matching worker; do systemctl show -p NRestarts --value m-$u; done'
+	done | paste -sd+ | bc
 }
 
 mkdir -p "$DIR"
 oom_before=$(ooms)
 test/e2e/hand-cluster.sh stop
+if [ "$FRESH" = 1 ]; then
+	pg="docker compose --env-file test/e2e/fleet/environments/lab/secrets.env -f test/e2e/postgres.compose.yaml"
+	$pg down --volumes
+	$pg up -d --wait
+	test/e2e/hand-cluster.sh database
+	test/e2e/hand-cluster.sh config
+fi
 test/e2e/hand-cluster.sh start
 sleep 60
 
 failed=0
 if [ "$RATE" = 0 ]; then
-    # Idle, 10 minutes after start: the 60 s above and these 540 s.
-    test/e2e/sample.sh 540 "$DIR/$NAME.jsonl"
+	# Idle, 10 minutes after start: the 60 s above and these 540 s.
+	test/e2e/sample.sh 540 "$DIR/$NAME.jsonl"
 else
-    # 30 s of quiet before the load and after it, so a chart shows where it starts and stops.
-    test/e2e/sample.sh 1000 "$DIR/$NAME.jsonl" &
-    sampler=$!
-    # Ctrl-C does not reach a background job, so stop the sampler when this script exits.
-    trap 'kill "$sampler" 2>/dev/null || true' EXIT
-    echo "$NAME: load until $(date -d +16min +%H:%M), then the summary"
-    sleep 30
-    go -C .cache/omes run ./cmd/omes run-scenario-with-worker \
-        --scenario workflow_with_single_noop_activity --language go \
-        --run-id "$ID" --server-address "$ADDR:7233" --namespace default \
-        --duration 15m --max-iterations-per-second "$RATE" --max-concurrent 200 \
-        >"$DIR/$NAME.log" 2>&1 || failed=1
-    wait "$sampler"
+	# 30 s of quiet before the load and after it, so a chart shows where it starts and stops.
+	test/e2e/sample.sh 1000 "$DIR/$NAME.jsonl" &
+	sampler=$!
+	# Ctrl-C does not reach a background job, so stop the sampler when this script exits.
+	trap 'kill "$sampler" 2>/dev/null || true' EXIT
+	echo "$NAME: load until $(date -d +16min +%H:%M), then the summary"
+	sleep 30
+	go -C .cache/omes run ./cmd/omes run-scenario-with-worker \
+		--scenario workflow_with_single_noop_activity --language go \
+		--run-id "$ID" --server-address "$ADDR:7233" --namespace default \
+		--duration 15m --max-iterations-per-second "$RATE" --max-concurrent 200 \
+		>"$DIR/$NAME.log" 2>&1 || failed=1
+	wait "$sampler"
 fi
 
 echo "$NAME"
 [ "$failed" = 0 ] || echo "  INVALID: omes failed, see $DIR/$NAME.log"
 if [ "$RATE" != 0 ]; then
-    target=$((RATE * 900))
-    completed=$(node vps-01 temporal workflow count --namespace default --address "$ADDR:7233" \
-        --query "'TaskQueue=\"omes-$ID\" AND ExecutionStatus=\"Completed\"'" | awk '{print $2}')
-    echo "  completed $completed, needs at least $((target * 99 / 100)) of $target"
-    [ "$completed" -ge $((target * 99 / 100)) ] || echo "  INVALID: too few completed"
+	target=$((RATE * 900))
+	completed=$(node vps-01 temporal workflow count --namespace default --address "$ADDR:7233" \
+		--query "'TaskQueue=\"omes-$ID\" AND ExecutionStatus=\"Completed\"'" | awk '{print $2}')
+	echo "  completed $completed, needs at least $((target * 99 / 100)) of $target"
+	[ "$completed" -ge $((target * 99 / 100)) ] || echo "  INVALID: too few completed"
 fi
 r=$(restarts)
 echo "  restarts $r"

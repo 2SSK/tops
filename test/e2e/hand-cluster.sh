@@ -22,6 +22,7 @@ node() { ssh -F lab/keys/ssh_config "$@"; }
 # The roles of a node, in start order: the worker needs a frontend to talk to.
 roles() {
 	case $1 in
+	vps-01) echo "${ONLY:-history matching frontend worker}" ;;
 	vps-03) echo matching frontend ;;
 	*) echo history matching frontend worker ;;
 	esac
@@ -87,7 +88,7 @@ server_config() {
 # enable-template
 log: { stdout: true, level: info }
 persistence:
-  numHistoryShards: 512
+  numHistoryShards: ${SHARDS:-512}
   defaultStore: default
   visibilityStore: visibility
   datastores:
@@ -185,10 +186,11 @@ ln -sfn "/opt/temporal/cli/$1/temporal" /usr/local/bin/temporal
 EOF
 }
 
+# Every role on every node, whatever ONLY says: a run must start from nothing running.
 stop() {
 	for n in "${NODES[@]}"; do
-		for role in $(roles "$n"); do
-			node "$n" sudo systemctl stop "m-$role" || true
+		for role in frontend history matching worker; do
+			node "$n" sudo systemctl stop "m-$role" 2>/dev/null || true
 		done
 	done
 }
