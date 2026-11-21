@@ -1,2 +1,11 @@
 history.cacheTTL:
   - value: 1h
+# The caches are bounded by bytes, as on the clusters the sizing constants were measured on
+# (internal/sizing/testdata/README.md): by default the mutable-state cache is bounded only by
+# entry count (128000) and the events cache takes 256 MiB, more than a VPSLAB node can give.
+history.cacheSizeBasedLimit:
+  - value: true
+history.hostLevelCacheMaxSizeBytes:
+  - value: 67108864 # 64 MiB
+history.eventsHostLevelCacheMaxSizeBytes:
+  - value: 33554432 # 32 MiB

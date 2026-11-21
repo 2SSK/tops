@@ -99,8 +99,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: "{{ env "TOPS_PG_PASSWORD" }}"
-        maxConns: 12
-        maxIdleConns: 12
+        maxConns: 20
+        maxIdleConns: 20
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -110,8 +110,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: "{{ env "TOPS_PG_PASSWORD" }}"
-        maxConns: 3
-        maxIdleConns: 3
+        maxConns: 5
+        maxIdleConns: 5
         maxConnLifetime: 1h
 global:
   membership: { maxJoinDuration: 30s, broadcastAddress: "$addr" }
@@ -137,11 +137,25 @@ dynamicConfigClient:
 EOF
 }
 
+dynamic_config() {
+	case $1 in
+	history)
+		cat <<'EOF'
+history.cacheSizeBasedLimit:
+  - value: true
+history.hostLevelCacheMaxSizeBytes:
+  - value: 67108864
+EOF
+		;;
+	*) echo '{}' ;;
+	esac
+}
+
 config() {
 	for n in "${NODES[@]}"; do
 		for role in $(roles "$n"); do
 			server_config "$(address "$n")" "$role" | node "$n" sudo install -m 640 -g temporal /dev/stdin "/etc/temporal/$role.yaml"
-			echo '{}' | node "$n" sudo install -m 640 -g temporal /dev/stdin "/etc/temporal/dynamicconfig-$role.yaml"
+			dynamic_config "$role" | node "$n" sudo install -m 640 -g temporal /dev/stdin "/etc/temporal/dynamicconfig-$role.yaml"
 		done
 		echo "$n configured: $(roles "$n")"
 	done
