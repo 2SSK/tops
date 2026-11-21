@@ -45,8 +45,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 2
-        maxIdleConns: 2
+        maxConns: 5
+        maxIdleConns: 5
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -83,15 +83,15 @@ dynamicConfigClient:
 
 ==> /etc/temporal/frontend.env (0640 root:temporal, role "frontend", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
-GOMEMLIMIT=261MiB
+GOMEMLIMIT=149MiB
 GOMAXPROCS=2
 
 ==> /etc/systemd/system/temporal@frontend.service.d/limits.conf (0644 root:root, role "frontend", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
 [Service]
-MemoryHigh=348M
-MemoryMax=387M
-CPUWeight=90
+MemoryHigh=322M
+MemoryMax=340M
+CPUWeight=115
 
 ==> /etc/temporal/dynamicconfig-frontend.yaml (0640 root:temporal, role "frontend", hot or restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role frontend. tops apply overwrites hand edits.
@@ -120,8 +120,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 6
-        maxIdleConns: 6
+        maxConns: 30
+        maxIdleConns: 30
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -131,8 +131,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 2
-        maxIdleConns: 2
+        maxConns: 3
+        maxIdleConns: 3
         maxConnLifetime: 1h
 global:
   membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
@@ -158,15 +158,15 @@ dynamicConfigClient:
 
 ==> /etc/temporal/history.env (0640 root:temporal, role "history", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
-GOMEMLIMIT=552MiB
+GOMEMLIMIT=535MiB
 GOMAXPROCS=2
 
 ==> /etc/systemd/system/temporal@history.service.d/limits.conf (0644 root:root, role "history", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
 [Service]
-MemoryHigh=737M
-MemoryMax=819M
-CPUWeight=180
+MemoryHigh=973M
+MemoryMax=1020M
+CPUWeight=209
 
 ==> /etc/temporal/dynamicconfig-history.yaml (0640 root:temporal, role "history", hot or restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role history. tops apply overwrites hand edits.
@@ -192,8 +192,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 3
-        maxIdleConns: 3
+        maxConns: 30
+        maxIdleConns: 30
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -203,8 +203,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 1
-        maxIdleConns: 1
+        maxConns: 3
+        maxIdleConns: 3
         maxConnLifetime: 1h
 global:
   membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
@@ -230,15 +230,15 @@ dynamicConfigClient:
 
 ==> /etc/temporal/matching.env (0640 root:temporal, role "matching", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
-GOMEMLIMIT=313MiB
+GOMEMLIMIT=63MiB
 GOMAXPROCS=2
 
 ==> /etc/systemd/system/temporal@matching.service.d/limits.conf (0644 root:root, role "matching", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
 [Service]
-MemoryHigh=417M
-MemoryMax=464M
-CPUWeight=108
+MemoryHigh=121M
+MemoryMax=130M
+CPUWeight=62
 
 ==> /etc/temporal/dynamicconfig-matching.yaml (0640 root:temporal, role "matching", hot or restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role matching. tops apply overwrites hand edits.
@@ -262,8 +262,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 2
-        maxIdleConns: 2
+        maxConns: 3
+        maxIdleConns: 3
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -273,8 +273,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 1
-        maxIdleConns: 1
+        maxConns: 2
+        maxIdleConns: 2
         maxConnLifetime: 1h
 global:
   membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.12" }
@@ -300,15 +300,15 @@ dynamicConfigClient:
 
 ==> /etc/temporal/worker.env (0640 root:temporal, role "worker", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.
-GOMEMLIMIT=146MiB
+GOMEMLIMIT=67MiB
 GOMAXPROCS=2
 
 ==> /etc/systemd/system/temporal@worker.service.d/limits.conf (0644 root:root, role "worker", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.
 [Service]
-MemoryHigh=195M
-MemoryMax=217M
-CPUWeight=22
+MemoryHigh=110M
+MemoryMax=113M
+CPUWeight=13
 
 ==> /etc/temporal/dynamicconfig-worker.yaml (0640 root:temporal, role "worker", hot or restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-02 role worker. tops apply overwrites hand edits.

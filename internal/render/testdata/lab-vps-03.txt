@@ -45,8 +45,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 2
-        maxIdleConns: 2
+        maxConns: 5
+        maxIdleConns: 5
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -83,15 +83,15 @@ dynamicConfigClient:
 
 ==> /etc/temporal/frontend.env (0640 root:temporal, role "frontend", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-03 role frontend. tops apply overwrites hand edits.
-GOMEMLIMIT=572MiB
+GOMEMLIMIT=535MiB
 GOMAXPROCS=2
 
 ==> /etc/systemd/system/temporal@frontend.service.d/limits.conf (0644 root:root, role "frontend", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-03 role frontend. tops apply overwrites hand edits.
 [Service]
-MemoryHigh=763M
-MemoryMax=848M
-CPUWeight=90
+MemoryHigh=1153M
+MemoryMax=1219M
+CPUWeight=115
 
 ==> /etc/temporal/dynamicconfig-frontend.yaml (0640 root:temporal, role "frontend", hot or restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-03 role frontend. tops apply overwrites hand edits.
@@ -120,8 +120,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 3
-        maxIdleConns: 3
+        maxConns: 30
+        maxIdleConns: 30
         maxConnLifetime: 1h
     visibility:
       sql:
@@ -131,8 +131,8 @@ persistence:
         connectProtocol: tcp
         user: "temporal"
         password: {{ env "TOPS_PG_PASSWORD" | quote }}
-        maxConns: 1
-        maxIdleConns: 1
+        maxConns: 3
+        maxIdleConns: 3
         maxConnLifetime: 1h
 global:
   membership: { maxJoinDuration: 30s, broadcastAddress: "10.80.0.13" }
@@ -158,15 +158,15 @@ dynamicConfigClient:
 
 ==> /etc/temporal/matching.env (0640 root:temporal, role "matching", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-03 role matching. tops apply overwrites hand edits.
-GOMEMLIMIT=702MiB
+GOMEMLIMIT=187MiB
 GOMAXPROCS=2
 
 ==> /etc/systemd/system/temporal@matching.service.d/limits.conf (0644 root:root, role "matching", restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-03 role matching. tops apply overwrites hand edits.
 [Service]
-MemoryHigh=936M
-MemoryMax=1040M
-CPUWeight=108
+MemoryHigh=359M
+MemoryMax=384M
+CPUWeight=62
 
 ==> /etc/temporal/dynamicconfig-matching.yaml (0640 root:temporal, role "matching", hot or restart role) <==
 # Rendered by tops for lab/tops-e2e/vps-03 role matching. tops apply overwrites hand edits.

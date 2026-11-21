@@ -204,23 +204,22 @@ func TestBytes(t *testing.T) {
 	}
 }
 
-// TestPlaceholderFitsTheLab: until T2.1b measures them, the placeholder constants must at least
-// size VPSLAB's nodes (1280M with every role, 768M with frontend and matching) and pass
-// headroom for the lab's 512 shards.
-func TestPlaceholderFitsTheLab(t *testing.T) {
+// TestMeasuredFitsTheLab: the measured constants size VPSLAB's nodes (1280M with every role,
+// 768M with frontend and matching) without a pin, and pass headroom for the lab's 512 shards.
+func TestMeasuredFitsTheLab(t *testing.T) {
 	for _, minor := range []string{"1.30", "1.31"} {
 		c, err := For(minor)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if c.Temporal != minor || c.MeasuredAt != "" {
-			t.Errorf("For(%s) = %s measured %q, want the placeholder", minor, c.Temporal, c.MeasuredAt)
+		if c.Temporal != minor || c.MeasuredAt == "" {
+			t.Errorf("For(%s) = %s measured %q, want the measured constants", minor, c.Temporal, c.MeasuredAt)
 		}
 		var sized []NodeSize
 		for _, n := range []Node{
 			{Name: "vps-01", Memory: 1280 * mib, Cores: 1.5, Roles: allRoles},
 			{Name: "vps-02", Memory: 1280 * mib, Cores: 1.5, Roles: allRoles},
-			{Name: "vps-03", Memory: 768 * mib, Cores: 1, Roles: []string{"frontend", "matching"}, Pin: map[string]spec.Pin{"matching": {MemoryMax: "512M"}}},
+			{Name: "vps-03", Memory: 768 * mib, Cores: 1, Roles: []string{"frontend", "matching"}},
 		} {
 			ns, err := Size(c, n)
 			if err != nil {

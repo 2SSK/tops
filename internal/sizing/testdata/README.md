@@ -51,3 +51,49 @@ sizes, halve it once, here, with the date and the reason.
    role ever needed at once. A run whose open count reaches `persistence_sql_max_open_conn` was
    capped by its pool and does not count for `conn_r`. The measured pools are 20 (default store)
    and 5 (visibility), 250 for the 10 roles, inside vps-pg's 295.
+
+## The quick set (2026-11-21): `measure-2026-11-21.json`
+
+Run on request as a short first set instead of the full matrix, with the conditions above except:
+the `quiet` power profile (the laptop ran hot on `balanced`, with a browser using a core and a
+half), one idle run of 3 minutes after 60 s, and one reference-load run of **5 minutes** (not 15)
+at 5 workflows/s against vps-01's frontend. omes at the pinned commit; Temporal 1.31.3; caps
+1280M/1.5 CPU (vps-01, vps-02), 768M/1 CPU (vps-03), vps-pg 512M.
+
+| Rule                        | Result                                                        |
+| --------------------------- | ------------------------------------------------------------- |
+| Completed                   | 1499 of 1500 (needs 1485): valid                              |
+| Restarts, `oom_kill`        | 0 on every node                                               |
+| Lowest workstation memory   | 9367 MiB                                                      |
+| CPU temperature             | 71 °C at most                                                 |
+
+How each constant is read from the samples (`TestConstantsFromMeasurements` does exactly this):
+
+| Constant   | Rule                                                                                       | Value                                    |
+| ---------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| `osBase`   | idle: node `memory.current` minus its Temporal units, worst second of any node, up to a MiB | 444 MiB (vps-01; vps-02/03 about 275)    |
+| `floor_r`  | idle: the role's highest `memory.current` on any node, up to a MiB                          | 37 / 130 / 42 / 40 MiB                   |
+| `share_r`  | load: peak on an all-roles node minus the floor, normalised                                 | 0.224 / 0.657 / 0.065 / 0.054            |
+| `burst_r`  | load: largest rise within 10 s on an all-roles node, of the role's peak                     | 0.054 / 0.046 / 0.065 / 0.028            |
+| `nonHeap_r`| load: median of (`memory.current` − `memory_heapinuse`) / `memory.current`, worst node      | 0.536 / 0.45 / 0.478 / 0.386             |
+| `cpu_r`    | load: CPU seconds over the run, worst node                                                  | 27.1 / 49.1 / 14.6 / 3.1                 |
+| `conn_r`   | load: peak `persistence_sql_open_conn` / node CPUs × 1.5, worst node                        | 3 / **20** / **20** / 2                  |
+| `visConn_r`| the same for the visibility store                                                           | 1.5 / 2 / 1.5 / 1                        |
+
+(frontend / history / matching / worker.)
+
+Not yet measured, kept as first guesses and to be measured before T8 relies on them:
+
+- **`conn_r` of history and matching are lower bounds**: both filled their 20-connection pools on
+  vps-01, so the rule above says they do not count. Re-measure with pools of 40.
+- **`maxPool`** (50) needs the double-load run; **`perShard`** (256 KiB) needs the 128/256/512-shard
+  clusters (`measure-run.sh shards-<n>`); `perShard` is `[]` in the file.
+- **Floors were read with all roles together**, not each role alone (`measure-run.sh alone-<role>`).
+- `osBase` includes the page cache of the Temporal binaries (about 170 MiB on vps-01, which also ran
+  the schema tool and the CLI). Worst-kept makes it the safe high side.
+- vps-pg: 270 MiB anon + shmem at load while `memory.current` sat at its 512 MiB cap (finding 2).
+
+**S3 fit** (all four roles on vps-03's 768 MiB, plan T2.1b step 5): 768 − 444 − 249 = **75 MiB free:
+fits**. **Caps** (PRD Q14): the lab contract's caps stay. With the measured constants every node
+fits its roles (vps-03 has 245 MiB free above its floors), headroom for 512 shards holds (258 of
+270 MiB), and vps-pg's 270 MiB at the reference rate leaves 242 MiB in its 512 MiB cap.

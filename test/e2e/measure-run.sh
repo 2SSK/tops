@@ -37,7 +37,7 @@ shards-128 | shards-256 | shards-512)
 	RATE=0 FRESH=1
 	export SHARDS=${PHASE#shards-}
 	;;
-*) echo "$USAGE" exit 2 >&2 ;;
+*) echo "$USAGE" >&2 && exit 2 ;;
 esac
 
 node() { ssh -F lab/keys/ssh_config "$@"; }

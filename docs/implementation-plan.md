@@ -95,7 +95,7 @@ temporalScale TRD constraints for the other rule about who may use these contain
 **Memory budget.** tops sizes every role up to its node's cap; it cannot see the workstation, so if the sum of
 all caps exceeds the workstation's free memory, the host overcommits and every number tops reads (and every
 measurement) is wrong. The reference workstation has 15 GiB with a desktop running and 4.5–6 GiB free. Caps
-(decided by T2.1's measurements; these are the starting proposal):
+(confirmed by T2.1b's first measurements, `internal/sizing/testdata/README.md`):
 
 | Container                    | CPUs | Memory cap   | Runs                                                                                                          |
 | ---------------------------- | ---- | ------------ | ------------------------------------------------------------------------------------------------------------- |

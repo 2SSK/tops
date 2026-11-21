@@ -19,26 +19,29 @@ type Constants struct {
 	PerShard   int64 // history memory per owned shard
 }
 
-// placeholder stands in until T2.1b's measurements replace it: every value is a guess sized
-// so the VPSLAB nodes fit, and MeasuredAt is empty so tops capacity says so.
-var placeholder = Constants{
-	OSBase:   160 * mib,
-	Floor:    map[string]int64{"frontend": 80 * mib, "history": 128 * mib, "matching": 80 * mib, "worker": 64 * mib},
-	Share:    map[string]float64{"frontend": 0.2, "history": 0.45, "matching": 0.25, "worker": 0.1},
-	Burst:    map[string]float64{"frontend": 0.1, "history": 0.1, "matching": 0.1, "worker": 0.1},
-	NonHeap:  map[string]float64{"frontend": 0.25, "history": 0.25, "matching": 0.25, "worker": 0.25},
-	CPU:      map[string]float64{"frontend": 1, "history": 2, "matching": 1.2, "worker": 0.25},
-	Conn:     map[string]float64{"frontend": 1, "history": 4, "matching": 2, "worker": 1},
-	VisConn:  map[string]float64{"frontend": 2, "history": 1, "matching": 0.5, "worker": 0.5},
-	MaxPool:  50,
-	PerShard: 256 << 10,
+// measured131 are the constants measured on VPSLAB for Temporal 1.31.3 (testdata/README.md):
+// a quick set, one idle and one 5-minute reference-load run, on the quiet power profile.
+// TestConstantsFromMeasurements recomputes every measured value from testdata/measure-*.json.
+// MaxPool and PerShard are not measured yet and keept their first guesses; history's and
+var measured131 = Constants{
+	MeasuredAt: "2026-11-21",
+	OSBase:     444 * mib,
+	Floor:      map[string]int64{"frontend": 37 * mib, "history": 130 * mib, "matching": 42 * mib, "worker": 40 * mib},
+	Share:      map[string]float64{"frontend": 0.224, "history": 0.657, "matching": 0.065, "worker": 0.054},
+	Burst:      map[string]float64{"frontend": 0.054, "history": 0.046, "matching": 0.065, "worker": 0.028},
+	NonHeap:    map[string]float64{"frontend": 0.536, "history": 0.45, "matching": 0.478, "worker": 0.386},
+	CPU:        map[string]float64{"frontend": 27.1, "history": 49.1, "matching": 14.6, "worker": 3.1},
+	Conn:       map[string]float64{"frontend": 3, "history": 20, "matching": 20, "worker": 2},
+	VisConn:    map[string]float64{"frontend": 1.5, "history": 2, "matching": 1.5, "worker": 1},
+	MaxPool:    50,
+	PerShard:   256 << 10,
 }
 
 // For returns the constants for a Temporal minor ("1.31").
 func For(minor string) (Constants, error) {
 	switch minor {
 	case "1.30", "1.31":
-		c := placeholder
+		c := measured131
 		c.Temporal = minor
 		return c, nil
 	}
