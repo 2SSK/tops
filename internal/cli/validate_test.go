@@ -345,3 +345,17 @@ func TestValidateSecretsNotIgnored(t *testing.T) {
 		t.Errorf("once ignored, output = %q, want %q", out, want)
 	}
 }
+
+// TestValidatePinBelowFloor: validate refuses a pin the measured floor cannot run in, offline,
+// with the file, line and floor, before any node is asked.
+func TestValidatePinBelowFloor(t *testing.T) {
+	pinned := strings.Replace(validSpec, "  - { name: vps-02, address: 10.80.0.12, roles: [frontend, history, matching, worker] }\n",
+		"  - name: vps-02\n    address: 10.80.0.12\n    roles: [frontend, history, matching, worker]\n    pin: { history: { memoryMax: 64M } }\n", 1)
+	out, err := runValidate(t, pinned)
+	if got := term.ExitCode(err); got != 4 {
+		t.Errorf("exit code = %d, want 4 (%v)", got, err)
+	}
+	if want := "✗ environments/qa/cluster.yaml:13  nodes[1].pin.history.memoryMax  64M is below history's floor of 130M on Temporal 1.31\n"; out != want {
+		t.Errorf("output =\n%s\nwant\n%s", out, want)
+	}
+}

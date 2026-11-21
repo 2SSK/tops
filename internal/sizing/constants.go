@@ -22,7 +22,8 @@ type Constants struct {
 // measured131 are the constants measured on VPSLAB for Temporal 1.31.3 (testdata/README.md):
 // a quick set, one idle and one 5-minute reference-load run, on the quiet power profile.
 // TestConstantsFromMeasurements recomputes every measured value from testdata/measure-*.json.
-// MaxPool and PerShard are not measured yet and keept their first guesses; history's and
+// MaxPool and PerShard are not measured yet and keep their first guesses; history's and
+// matching's Conn are lower bounds: both filled their 20-connection pools.
 var measured131 = Constants{
 	MeasuredAt: "2026-11-21",
 	OSBase:     444 * mib,

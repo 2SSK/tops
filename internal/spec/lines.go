@@ -56,3 +56,12 @@ func child(n *yaml.Node, step string) (*yaml.Node, int) {
 
 	return nil, 0
 }
+
+// Line is the line of path in the file c was parsed from, as Validate reports it; 0 for a
+// Cluster that was not parsed from a file.
+func (c *Cluster) Line(path string) int {
+	if c.doc == nil {
+		return 0
+	}
+	return lineOf(c.doc, path)
+}

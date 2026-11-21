@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/2SSK/tops/internal/fleet"
+	"github.com/2SSK/tops/internal/sizing"
 	"github.com/2SSK/tops/internal/spec"
 	"github.com/2SSK/tops/internal/term"
 )
@@ -61,6 +62,11 @@ func check(ctx context.Context, env *fleet.Env) (errs, warnings []spec.Problem, 
 		if _, err := env.ReadSecrets(); err != nil {
 			return nil, nil, err
 		}
+		consts, err := sizingConstants(env)
+		if err != nil {
+			return nil, nil, err
+		}
+		errs = sizing.CheckPins(consts, env.Cluster)
 	}
 	errs, warnings, err = checkSettings(env, errs)
 	if err != nil {
