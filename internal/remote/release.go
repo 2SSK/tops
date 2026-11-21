@@ -2,7 +2,6 @@ package remote
 
 import (
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -11,13 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/2SSK/tops/internal/release"
 	"github.com/2SSK/tops/internal/term"
 )
 
@@ -27,9 +26,8 @@ const releaseBase = "https://github.com/2SSK/tops/releases/download"
 // releaseVersion matches the versions that have a release: a tag, not a build after one.
 var releaseVersion = regexp.MustCompile(`^v(\d+\.\d+\.\d+)$`)
 
-// Bounds on what tops downloads: checksums.txt is under 1 KB, a tops archive about 2.5 MB.
+// Bounds on what tops downloads: a tops archive is about 2.5 MB.
 const (
-	maxChecksums = 1 << 20
 	maxArchive   = 64 << 20
 	fetchTimeout = 2 * time.Minute
 )
@@ -43,15 +41,17 @@ func (d *Dialer) fetchRelease(ctx context.Context, arch string) (string, error) 
 		return path, nil
 	}
 	name := fmt.Sprintf("tops_%s_linux_%s.tar.gz", strings.TrimPrefix(d.version, "v"), arch)
-	sums, err := d.download(ctx, "checksums.txt", maxChecksums)
+	fetch := release.Fetcher{HTTP: d.http}
+	base := d.releases + "/" + d.version + "/"
+	sums, err := fetch.Get(ctx, base+"checksums.txt", release.MaxChecksums)
 	if err != nil {
 		return "", err
 	}
-	want, err := checksumOf(sums, name)
+	want, err := release.Checksum(sums, name)
 	if err != nil {
 		return "", err
 	}
-	archive, err := d.download(ctx, name, maxArchive)
+	archive, err := fetch.Get(ctx, base+name, maxArchive)
 	if err != nil {
 		return "", err
 	}
@@ -71,55 +71,6 @@ func (d *Dialer) fetchRelease(ctx context.Context, arch string) (string, error) 
 		return "", err
 	}
 	return path, nil
-}
-
-// download fetches one asset of this version's release, at most limit bytes.
-func (d *Dialer) download(ctx context.Context, asset string, limit int64) ([]byte, error) {
-	url := d.releases + "/" + d.version + "/" + asset
-	fail := func(why string) error {
-		return &term.UserError{
-			Code: "release.download",
-			What: "cannot download " + url,
-			Why:  why,
-			Fix:  "check the network, or build the helpers yourself: make build-linux",
-		}
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("download %s: %w", url, err)
-	}
-	resp, err := d.http.Do(req)
-	if err != nil {
-		return nil, fail(err.Error())
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fail(resp.Status)
-	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
-	if err != nil {
-		return nil, fail(err.Error())
-	}
-	if int64(len(b)) > limit {
-		return nil, fail(fmt.Sprintf("larger than %d bytes", limit))
-	}
-	return b, nil
-}
-
-// checksumOf finds name's sha256 in a checksums.txt: "<hex>  <name>" per line.
-func checksumOf(sums []byte, name string) (string, error) {
-	sc := bufio.NewScanner(bytes.NewReader(sums))
-	for sc.Scan() {
-		if sum, file, ok := strings.Cut(sc.Text(), "  "); ok && file == name {
-			return sum, nil
-		}
-	}
-	return "", &term.UserError{
-		Code: "release.checksum",
-		What: "checksums.txt does not list " + name,
-		Why:  "the release has no linux archive for this arch",
-		Fix:  "use an amd64 or arm64 node",
-	}
 }
 
 // extractTops returns the tops binary from a release archive: the file named tops at its root.

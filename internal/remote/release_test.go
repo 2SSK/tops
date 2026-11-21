@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/2SSK/tops/internal/release"
 	"github.com/2SSK/tops/internal/wire"
 )
 
@@ -179,7 +180,7 @@ func TestFetchReleaseBadArchive(t *testing.T) {
 
 func TestFetchReleaseTooLarge(t *testing.T) {
 	r := newRelease(t, "helper")
-	r.assets["checksums.txt"] = bytes.Repeat([]byte("x"), maxChecksums+1)
+	r.assets["checksums.txt"] = bytes.Repeat([]byte("x"), release.MaxChecksums+1)
 	_, err := releaseDialer(t, r).binaryPath(t.Context(), "arm64")
 	if ue := userError(t, err, "release.download"); !strings.Contains(ue.Why, "larger than") {
 		t.Errorf("Why = %q", ue.Why)

@@ -118,3 +118,19 @@ type AppliedFile struct {
 	Owner  string `json:"owner"`
 	Group  string `json:"group"`
 }
+
+// Stage is what a node installs before tops writes its files: the temporal user and releases.
+type Stage struct {
+	User     bool       `json:"user"`
+	Releases []Download `json:"releases"`
+}
+
+// Download is one release archive to install, verified against the sha256 the workstation read
+// from the release's checksums.txt.
+type Download struct {
+	Kind    string   `json:"kind"`    // "server", "cli"
+	Version string   `json:"version"` // "1.31.3"
+	URL     string   `json:"url"`
+	SHA256  string   `json:"sha256"`
+	Extract []string `json:"extract"` // the binaries to take from the archive
+}
