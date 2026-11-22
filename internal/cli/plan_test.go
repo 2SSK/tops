@@ -34,16 +34,20 @@ func sizedLab(t *testing.T, hellos []wire.Hello, limits func() (sizing.DBLimits,
 	return env, d
 }
 
-// fakeFacts answers facts for every node from a function, and records what each node was
-// asked. It is called from several goroutines, as the nodes are.
-type fakeFacts struct {
-	mu     sync.Mutex
-	asked  map[int]wire.FactsArgs
-	answer func(i int, args wire.FactsArgs) wire.Facts
-	err    error
+// fakeNodes answers facts for every node from a function, and validate from another (nil
+// accepts everything), and records what each node was asked. It is called from several
+// goroutines, as the nodes are.
+type fakeNodes struct {
+	mu        sync.Mutex
+	asked     map[int]wire.FactsArgs
+	validated map[int]wire.Validate
+	answer    func(i int, args wire.FactsArgs) wire.Facts
+	verdict   func(i int, v wire.Validate) wire.ValidateResult
+	err       error // of facts
+	vErr      error // of validate
 }
 
-func (f *fakeFacts) facts(_ context.Context, i int, args wire.FactsArgs) (wire.Facts, error) {
+func (f *fakeNodes) Facts(_ context.Context, i int, args wire.FactsArgs) (wire.Facts, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.asked == nil {
@@ -54,6 +58,22 @@ func (f *fakeFacts) facts(_ context.Context, i int, args wire.FactsArgs) (wire.F
 		return wire.Facts{}, f.err
 	}
 	return f.answer(i, args), nil
+}
+
+func (f *fakeNodes) Validate(_ context.Context, i int, v wire.Validate) (wire.ValidateResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.validated == nil {
+		f.validated = map[int]wire.Validate{}
+	}
+	f.validated[i] = v
+	if f.vErr != nil {
+		return wire.ValidateResult{}, f.vErr
+	}
+	if f.verdict == nil {
+		return wire.ValidateResult{Rejected: []wire.Rejection{}}, nil
+	}
+	return f.verdict(i, v), nil
 }
 
 // bare is a node tops never touched: none of the files, no release, no applied.json.
@@ -116,8 +136,8 @@ func shaOf(s string) string {
 // nothing validated, exit 2.
 func TestPlanBareNodes(t *testing.T) {
 	env, sized := sizedLab(t, labHellos, limitsOf(vpsPG, nil))
-	ff := &fakeFacts{answer: bare}
-	d, err := planEnv(t.Context(), env, sized, labSecrets, ff.facts)
+	ff := &fakeNodes{answer: bare}
+	d, err := planEnv(t.Context(), env, sized, labSecrets, ff)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +165,7 @@ func TestPlanBareNodes(t *testing.T) {
 // TestPlanPageBare: the human plan of bare nodes, as app-flow "plan" draws it.
 func TestPlanPageBare(t *testing.T) {
 	env, sized := sizedLab(t, labHellos, limitsOf(vpsPG, nil))
-	d, err := planEnv(t.Context(), env, sized, labSecrets, (&fakeFacts{answer: bare}).facts)
+	d, err := planEnv(t.Context(), env, sized, labSecrets, &fakeNodes{answer: bare})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +187,7 @@ func TestPlanPageBare(t *testing.T) {
 // TestPlanNothingToDo: nodes holding exactly what tops renders: no change, exit 0.
 func TestPlanNothingToDo(t *testing.T) {
 	env, sized := sizedLab(t, labHellos, limitsOf(vpsPG, nil))
-	d, err := planEnv(t.Context(), env, sized, labSecrets, (&fakeFacts{answer: applied(env)}).facts)
+	d, err := planEnv(t.Context(), env, sized, labSecrets, &fakeNodes{answer: applied(env)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +218,7 @@ func editedPlan(t *testing.T) *planDocument {
 		}
 		return f
 	}
-	d, err := planEnv(t.Context(), env, sized, labSecrets, (&fakeFacts{answer: answer}).facts)
+	d, err := planEnv(t.Context(), env, sized, labSecrets, &fakeNodes{answer: answer})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,8 +268,8 @@ func TestPlanShowsNoSecret(t *testing.T) {
 // refusal in --json for the T2 acceptance check.
 func TestPlanNodeTooSmall(t *testing.T) {
 	env, sized := sizedLab(t, []wire.Hello{hello(1280, 1.5), hello(1280, 1.5), hello(200, 1)}, limitsOf(vpsPG, nil))
-	ff := &fakeFacts{answer: bare}
-	d, err := planEnv(t.Context(), env, sized, labSecrets, ff.facts)
+	ff := &fakeNodes{answer: bare}
+	d, err := planEnv(t.Context(), env, sized, labSecrets, ff)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +288,7 @@ func TestPlanNodeTooSmall(t *testing.T) {
 // stops there, exit 5.
 func TestPlanStoreUnreachable(t *testing.T) {
 	env, sized := sizedLab(t, labHellos, limitsOf(sizing.DBLimits{}, errors.New("cannot reach 10.80.0.20:5432 on vps-01")))
-	d, err := planEnv(t.Context(), env, sized, labSecrets, (&fakeFacts{answer: bare}).facts)
+	d, err := planEnv(t.Context(), env, sized, labSecrets, &fakeNodes{answer: bare})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,8 +303,8 @@ func TestPlanStoreUnreachable(t *testing.T) {
 // TestPlanFactsFails: a node that cannot report its facts fails the plan.
 func TestPlanFactsFails(t *testing.T) {
 	env, sized := sizedLab(t, labHellos, limitsOf(vpsPG, nil))
-	ff := &fakeFacts{err: &term.UserError{Code: "helper.failed", What: "facts on vps-02 failed"}}
-	if _, err := planEnv(t.Context(), env, sized, labSecrets, ff.facts); err == nil || !strings.Contains(err.Error(), "facts on vps-02") {
+	ff := &fakeNodes{err: &term.UserError{Code: "helper.failed", What: "facts on vps-02 failed"}}
+	if _, err := planEnv(t.Context(), env, sized, labSecrets, ff); err == nil || !strings.Contains(err.Error(), "facts on vps-02") {
 		t.Errorf("err = %v", err)
 	}
 }

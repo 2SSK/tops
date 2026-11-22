@@ -10,6 +10,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 - The node helper's `stage` op, which `bootstrap` will run: it creates the `temporal` system user (home `/var/lib/temporal`, 0750, no shell) and installs the server and CLI releases. The workstation reads each archive's sha256 from the release's `checksums.txt` over TLS; the node downloads the archive and refuses one that does not match (`release.checksum`). Only the named binaries are extracted, into a temporary directory renamed into place, so a half-installed release never looks installed. `/opt/temporal/current` is set on the first install only; the newest 3 server releases are kept. A second run changes and downloads nothing.
 - Helper ops time out after 60 s, `stage` after 10 min.
+- `plan` validates every role's files with the spec's `temporal-server` on each node where that release is staged: `render-config` with exactly the role's environment (its output, which holds the password, is discarded) and `validate-dynamic-config`, in `/run/tops/<run-id>/`, removed afterwards. A file the release refuses is `refused.render_rejected` (exit 3) naming the file, the release, the node and Temporal's message, with secrets masked. The header says `validated with temporal-server <v> on <n> nodes` only when every node accepted; a node without the release says `not validated: <v> not staged`.
 
 ## [0.2.0] - 2026-11-20
 

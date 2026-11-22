@@ -122,3 +122,9 @@ func (n *Node) Facts(ctx context.Context, args wire.FactsArgs) (wire.Facts, erro
 func (n *Node) Stage(ctx context.Context, s wire.Stage) (wire.StageResult, error) {
 	return nodeOp[wire.StageResult](ctx, n, wire.OpStage, s)
 }
+
+// Validate checks each role's files with the release staged on the node. The helper runs
+// its temporal-server in /run/tops/<run-id> and removes the directory afterwards.
+func (n *Node) Validate(ctx context.Context, v wire.Validate) (wire.ValidateResult, error) {
+	return nodeOp[wire.ValidateResult](ctx, n, wire.OpValidate, v)
+}

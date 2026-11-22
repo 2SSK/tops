@@ -85,6 +85,37 @@ func Want(files render.FileSet) wire.FactsArgs {
 	return wire.FactsArgs{Want: want, Dirs: ownedDirs}
 }
 
+// Validate is what the node's helper checks with the target release: each role's server config
+// and dynamic config, with the environment systemd gives that role, the shared file first.
+func Validate(version string, files render.FileSet) wire.Validate {
+	byPath := map[string]render.File{}
+	for _, f := range files {
+		byPath[f.Path] = f
+	}
+	v := wire.Validate{Version: version, Roles: []wire.RoleFiles{}}
+	for _, f := range files {
+		if f.Path != render.ConfigPath(f.Role) {
+			continue // one entry per role, in the files' order
+		}
+		r := wire.RoleFiles{Role: f.Role, Config: string(f.Content), DynamicConfig: string(byPath[render.DynamicConfigPath(f.Role)].Content), Env: []string{}, Secrets: []string{}}
+		for _, env := range []render.File{byPath[render.SharedEnvPath], byPath[render.EnvPath(f.Role)]} {
+			for line := range strings.Lines(string(env.Content)) {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				r.Env = append(r.Env, line)
+				if env.Secret {
+					key, _, _ := strings.Cut(line, "=")
+					r.Secrets = append(r.Secrets, key)
+				}
+			}
+		}
+		v.Roles = append(v.Roles, r)
+	}
+	return v
+}
+
 // Node plans one node: files is what tops would install, facts what is there, version the
 // spec's Temporal version, and secrets the values no diff may show.
 func Node(name, version string, files render.FileSet, facts wire.Facts, secrets []string) NodePlan {

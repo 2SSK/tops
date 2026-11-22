@@ -22,6 +22,18 @@ const (
 	Dynamic     Effect = "hot or restart role" // plan decides from the classes of the changed keys
 )
 
+// SharedEnvPath is the environment every role on a node starts with: the secrets.
+const SharedEnvPath = "/etc/temporal/temporal.env"
+
+// ConfigPath is a role's server config.
+func ConfigPath(role string) string { return "/etc/temporal/" + role + ".yaml" }
+
+// EnvPath is a role's own environment, read after SharedEnvPath.
+func EnvPath(role string) string { return "/etc/temporal/" + role + ".env" }
+
+// DynamicConfigPath is a role's dynamic config.
+func DynamicConfigPath(role string) string { return "/etc/temporal/dynamicconfig-" + role + ".yaml" }
+
 // File is one rendered file and how tops installs it
 type File struct {
 	Path    string
@@ -51,7 +63,7 @@ type roleData struct {
 func Render(in NodeInput) (FileSet, error) {
 	todo := []fromTemplate{
 		{File{Path: "/etc/systemd/system/temporal@.service", Mode: 0o644, Owner: "root", Group: "root", Effect: RestartAll}, "temporal@.service", nil},
-		{File{Path: "/etc/temporal/temporal.env", Mode: 0o600, Owner: "root", Group: "root", Effect: RestartAll, Secret: true}, "temporal.env", in},
+		{File{Path: SharedEnvPath, Mode: 0o600, Owner: "root", Group: "root", Effect: RestartAll, Secret: true}, "temporal.env", in},
 	}
 	for _, r := range in.Roles {
 		todo = append(todo, roleFiles(in, r)...)
@@ -87,10 +99,10 @@ func roleFiles(in NodeInput, r RoleInput) []fromTemplate {
 		Settings:   dynamicConfig(r.Dynamic),
 	}
 	return []fromTemplate{
-		{File{Path: "/etc/temporal/" + r.Role + ".yaml", Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "server.yaml", newServerData(in, r)},
-		{File{Path: "/etc/temporal/" + r.Role + ".env", Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "role.env", d},
+		{File{Path: ConfigPath(r.Role), Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "server.yaml", newServerData(in, r)},
+		{File{Path: EnvPath(r.Role), Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "role.env", d},
 		{File{Path: "/etc/systemd/system/temporal@" + r.Role + ".service.d/limits.conf", Mode: 0o644, Owner: "root", Group: "root", Role: r.Role, Effect: RestartRole}, "limits.conf", d},
-		{File{Path: "/etc/temporal/dynamicconfig-" + r.Role + ".yaml", Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: Dynamic}, "dynamicconfig.yaml", d},
+		{File{Path: DynamicConfigPath(r.Role), Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: Dynamic}, "dynamicconfig.yaml", d},
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strings"
 
@@ -42,8 +43,22 @@ type refusal struct {
 	Fix  string `json:"fix,omitempty"`
 }
 
-// factsFunc reads the facts of node i, the i-th of the spec.
-type factsFunc func(ctx context.Context, i int, args wire.FactsArgs) (wire.Facts, error)
+// nodeCalls is what plan asks of node i, the i-th of the spec: what is there, and whether the
+// release staged there accepts the rendered files.
+type nodeCalls interface {
+	Facts(ctx context.Context, i int, args wire.FactsArgs) (wire.Facts, error)
+	Validate(ctx context.Context, i int, v wire.Validate) (wire.ValidateResult, error)
+}
+
+// Facts reads node i's facts.
+func (c *connected) Facts(ctx context.Context, i int, args wire.FactsArgs) (wire.Facts, error) {
+	return c.nodes[i].Facts(ctx, args)
+}
+
+// Validate checks node i's rendered files with its staged release.
+func (c *connected) Validate(ctx context.Context, i int, v wire.Validate) (wire.ValidateResult, error) {
+	return c.nodes[i].Validate(ctx, v)
+}
 
 func newPlanCommand(opts *Options) *cobra.Command {
 	return &cobra.Command{
@@ -100,15 +115,12 @@ func planOnNodes(cmd *cobra.Command, opts *Options, env *fleet.Env) (*planDocume
 	if err != nil {
 		return nil, err
 	}
-	facts := func(ctx context.Context, i int, args wire.FactsArgs) (wire.Facts, error) {
-		return c.nodes[i].Facts(ctx, args)
-	}
-	return planEnv(cmd.Context(), env, sized, secrets, facts)
+	return planEnv(cmd.Context(), env, sized, secrets, c)
 }
 
 // planEnv renders every node and plans it against its facts. A sizing refusal plans
 // nothing: there are no sizes to render the refused node's files from.
-func planEnv(ctx context.Context, env *fleet.Env, sized *capacityDocument, secrets fleet.Secrets, facts factsFunc) (*planDocument, error) {
+func planEnv(ctx context.Context, env *fleet.Env, sized *capacityDocument, secrets fleet.Secrets, nodes nodeCalls) (*planDocument, error) {
 	doc := &planDocument{
 		Kind: "Plan", TopsVersion: Version, Env: env.Name, Cluster: env.Cluster.Cluster, Nodes: []plan.NodePlan{}, Refusals: []refusal{}, capacity: sized,
 	}
@@ -126,9 +138,11 @@ func planEnv(ctx context.Context, env *fleet.Env, sized *capacityDocument, secre
 	for _, v := range secrets {
 		values = append(values, v.Reveal())
 	}
-	if doc.Nodes, err = planNodes(ctx, env.Cluster.Temporal.Version, inputs, values, facts); err != nil {
+	var rejected []refusal
+	if doc.Nodes, rejected, err = planNodes(ctx, env.Cluster.Temporal.Version, inputs, values, nodes); err != nil {
 		return nil, err
 	}
+	doc.Refusals = append(doc.Refusals, rejected...)
 	for _, n := range doc.Nodes {
 		doc.Changes = doc.Changes || n.Changes()
 		doc.Drift = doc.Drift || slices.ContainsFunc(n.Files, func(f plan.FileChange) bool { return f.Drift })
@@ -136,9 +150,11 @@ func planEnv(ctx context.Context, env *fleet.Env, sized *capacityDocument, secre
 	return doc, nil
 }
 
-// planNodes renders and plans each node, reading the nodes' facts in parallel.
-func planNodes(ctx context.Context, version string, inputs []render.NodeInput, secrets []string, facts factsFunc) ([]plan.NodePlan, error) {
-	nodes := make([]plan.NodePlan, len(inputs))
+// planNodes renders and plans each node, in parallel, and validates its files with the
+// spec's release where it is staged. A file the release refuses is a refusal of the plan.
+func planNodes(ctx context.Context, version string, inputs []render.NodeInput, secrets []string, nodes nodeCalls) ([]plan.NodePlan, []refusal, error) {
+	plans := make([]plan.NodePlan, len(inputs))
+	rejected := make([][]refusal, len(inputs))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
 	for i, in := range inputs {
@@ -147,18 +163,43 @@ func planNodes(ctx context.Context, version string, inputs []render.NodeInput, s
 			if err != nil {
 				return err
 			}
-			f, err := facts(ctx, i, plan.Want(files))
+			f, err := nodes.Facts(ctx, i, plan.Want(files))
 			if err != nil {
 				return err
 			}
-			nodes[i] = plan.Node(in.Node, version, files, f, secrets)
+			plans[i] = plan.Node(in.Node, version, files, f, secrets)
+			if !slices.Contains(f.Releases, version) {
+				return nil // the node's plan says: not validated, not staged
+			}
+			r, err := nodes.Validate(ctx, i, plan.Validate(version, files))
+			if err != nil {
+				return err
+			}
+			plans[i].Validated.OK = len(r.Rejected) == 0
+			for _, rej := range r.Rejected {
+				rejected[i] = append(rejected[i], renderRejected(in.Node, version, rej))
+			}
 			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return nodes, nil
+	return plans, slices.Concat(rejected...), nil
+}
+
+// renderRejected is the refusal for one file the target release refused (design brief).
+func renderRejected(node, version string, r wire.Rejection) refusal {
+	file := render.ConfigPath(r.Role)
+	if r.File == "dynamicConfig" {
+		file = render.DynamicConfigPath(r.Role)
+	}
+	return refusal{
+		Code: "refused.render_rejected",
+		What: fmt.Sprintf("%s rejected by temporal-server %s on %s", path.Base(file), version, node),
+		Why:  r.Message,
+		Fix:  "nothing changed; fix the value named above",
+	}
 }
 
 // renderEnv is every node's render input: the spec, the sizes, each role's merged dynamic
@@ -193,6 +234,10 @@ func toRefusal(err error) refusal {
 func (d *planDocument) exit() error {
 	if err := d.capacity.exit(); err != nil {
 		return err
+	}
+	if len(d.Refusals) > 0 { // the release refused a rendered file
+		r := d.Refusals[0]
+		return &term.Reported{Err: &term.UserError{Code: r.Code, What: r.What, Why: r.Why, Fix: r.Fix}}
 	}
 	if d.Changes || d.Drift {
 		return &term.Reported{Err: &term.UserError{Code: "pending.changes", What: "apply would change " + d.Env}}
@@ -233,7 +278,10 @@ func validatedOn(nodes []plan.NodePlan) string {
 
 // summary is the plan's last lines: what it counts, and the command that applies it.
 func (d *planDocument) summary() string {
-	if len(d.Refusals) > 0 || d.capacity.DB.Error != "" {
+	switch {
+	case len(d.Nodes) > 0 && len(d.Refusals) > 0:
+		return "\napply refuses until the refusals above are fixed\n"
+	case len(d.Refusals) > 0 || d.capacity.DB.Error != "":
 		return "\nnothing planned until the refusals above are fixed\n"
 	}
 	if !d.Changes && !d.Drift {
