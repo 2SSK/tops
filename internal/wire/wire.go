@@ -18,9 +18,10 @@ type Op string
 
 // The ops the helper runs.
 const (
-	OpHello Op = "hello"
-	OpFacts Op = "facts"
-	OpStage Op = "stage"
+	OpHello    Op = "hello"
+	OpFacts    Op = "facts"
+	OpStage    Op = "stage"
+	OpValidate Op = "validate"
 )
 
 // Request is the one JSON document a helper op reads on stdin.
@@ -139,4 +140,32 @@ type Download struct {
 // StageResult is what stage installed; empty when everything was there already.
 type StageResult struct {
 	Changed []string `json:"changed"`
+}
+
+// Validate is what the helper checks with a staged server release before anything on the
+// node changes: each role's files, as that role's temporal-server would read them.
+type Validate struct {
+	Version string      `json:"version"` // a staged server release, "1.31.3"
+	Roles   []RoleFiles `json:"roles"`
+}
+
+// RoleFiles is one role's rendered files and environment.
+type RoleFiles struct {
+	Role          string   `json:"role"`
+	Config        string   `json:"config"`        // <role>.yaml
+	DynamicConfig string   `json:"dynamicConfig"` // dynamicconfig-<role>.yaml
+	Env           []string `json:"env"`           // KEY=VALUE: temporal.env, then <role>.env, as systemd passes them
+	Secrets       []string `json:"secrets"`       // keys of Env whose values never appear in a message
+}
+
+// ValidateResult is what the target binary refused; empty when it accepted every file.
+type ValidateResult struct {
+	Rejected []Rejection `json:"rejected"`
+}
+
+// Rejection is one role's file the target binary refused, with its message, secrets masked.
+type Rejection struct {
+	Role    string `json:"role"`
+	File    string `json:"file"` // "config" or "dynamicConfig", as in RoleFiles
+	Message string `json:"message"`
 }

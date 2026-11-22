@@ -40,13 +40,14 @@ type Env struct {
 	Log     *slog.Logger
 }
 
-// handler runs one op on its raw args and returns its result.
-type handler func(ctx context.Context, env Env, args json.RawMessage) (any, error)
+// handler runs one op on its request and returns its result.
+type handler func(ctx context.Context, env Env, req wire.Request) (any, error)
 
 var handlers = map[wire.Op]handler{
-	wire.OpHello: hello,
-	wire.OpFacts: facts,
-	wire.OpStage: stage,
+	wire.OpHello:    hello,
+	wire.OpFacts:    facts,
+	wire.OpStage:    stage,
+	wire.OpValidate: validate,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -65,7 +66,7 @@ func Run(ctx context.Context, op wire.Op, env Env) int {
 		return env.reply(op, req.RunID, nil, badRequest("op", fmt.Errorf("unknown op %q", op)))
 	}
 
-	result, err := handle(ctx, env, req.Args)
+	result, err := handle(ctx, env, req)
 	if err != nil {
 		var we *wire.Error
 		if !errors.As(err, &we) {
@@ -76,8 +77,8 @@ func Run(ctx context.Context, op wire.Op, env Env) int {
 	return env.reply(op, req.RunID, result, nil)
 }
 
-func hello(_ context.Context, env Env, args json.RawMessage) (any, error) {
-	if err := decodeArgs(args, &struct{}{}); err != nil {
+func hello(_ context.Context, env Env, req wire.Request) (any, error) {
+	if err := decodeArgs(req.Args, &struct{}{}); err != nil {
 		return nil, err
 	}
 	h, err := env.Host.Hello(env.Version)
@@ -90,9 +91,9 @@ func hello(_ context.Context, env Env, args json.RawMessage) (any, error) {
 	return h, nil
 }
 
-func facts(ctx context.Context, env Env, args json.RawMessage) (any, error) {
+func facts(ctx context.Context, env Env, req wire.Request) (any, error) {
 	var a wire.FactsArgs
-	if err := decodeArgs(args, &a); err != nil {
+	if err := decodeArgs(req.Args, &a); err != nil {
 		return nil, err
 	}
 	for path := range a.Want {
@@ -108,15 +109,26 @@ func facts(ctx context.Context, env Env, args json.RawMessage) (any, error) {
 	return env.Host.Facts(ctx, a)
 }
 
-func stage(ctx context.Context, env Env, args json.RawMessage) (any, error) {
+func stage(ctx context.Context, env Env, req wire.Request) (any, error) {
 	var s wire.Stage
-	if err := decodeArgs(args, &s); err != nil {
+	if err := decodeArgs(req.Args, &s); err != nil {
 		return nil, err
 	}
 	if err := checkStage(s); err != nil {
 		return nil, badRequest("args", err)
 	}
 	return env.Host.Stage(ctx, s)
+}
+
+func validate(ctx context.Context, env Env, req wire.Request) (any, error) {
+	var v wire.Validate
+	if err := decodeArgs(req.Args, &v); err != nil {
+		return nil, err
+	}
+	if err := checkValidate(req.RunID, v); err != nil {
+		return nil, badRequest("args", err)
+	}
+	return env.Host.Validate(ctx, req.RunID, v)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so
