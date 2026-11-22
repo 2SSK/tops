@@ -21,6 +21,9 @@ func TestPlanValidates(t *testing.T) {
 	}
 	for i, n := range d.Nodes {
 		v := ff.validated[i]
+		if !strings.Contains(v.Unit, "ExecStart=/opt/temporal/current/temporal-server") {
+			t.Errorf("%s: unit is not the rendered temporal@.service:\n%s", n.Name, v.Unit)
+		}
 		var roles []string
 		for _, r := range v.Roles {
 			roles = append(roles, r.Role)
@@ -38,8 +41,8 @@ func TestPlanValidates(t *testing.T) {
 	}
 }
 
-// checkRoleFiles: a role is validated with its rendered config and the environment systemd
-// gives it, temporal.env's secret first, its value masked by key.
+// checkRoleFiles: a role is validated with its rendered config and drop-in, and the
+// environment systemd gives it, temporal.env's secret first, its value masked by key.
 func checkRoleFiles(t *testing.T, node string, r wire.RoleFiles) {
 	t.Helper()
 	if r.Env[0] != "TOPS_PG_PASSWORD="+labPassword || !strings.HasPrefix(r.Env[1], "GOMEMLIMIT=") || !slices.Equal(r.Secrets, []string{"TOPS_PG_PASSWORD"}) {
@@ -47,6 +50,9 @@ func checkRoleFiles(t *testing.T, node string, r wire.RoleFiles) {
 	}
 	if !strings.Contains(r.Config, "# enable-template") {
 		t.Errorf("%s %s: config is not the rendered %s.yaml", node, r.Role, r.Role)
+	}
+	if !strings.Contains(r.Limits, "MemoryMax=") {
+		t.Errorf("%s %s: limits are not the rendered limits.conf: %q", node, r.Role, r.Limits)
 	}
 }
 
@@ -101,6 +107,35 @@ func TestPlanRenderRejected(t *testing.T) {
 		"\nvps-03  no changes\n",
 		"\napply refuses until the refusals above are fixed\n",
 	)
+}
+
+// TestPlanUnitRejected: a unit or drop-in systemd refuses is refused.render_rejected too,
+// named by its path under /etc/systemd/system, with systemd's message.
+func TestPlanUnitRejected(t *testing.T) {
+	env, sized := sizedLab(t, labHellos, limitsOf(vpsPG, nil))
+	ff := &fakeNodes{answer: applied(env), verdict: func(i int, _ wire.Validate) wire.ValidateResult {
+		if i == 0 {
+			return wire.ValidateResult{Rejected: []wire.Rejection{
+				{File: "unit", Message: "/etc/systemd/system/temporal@.service:13: Failed to parse service restart specifier, ignoring: sometimes"},
+				{Role: "history", File: "limits", Message: "/etc/systemd/system/temporal@history.service.d/limits.conf:3: Invalid memory limit 'abcM', ignoring: Invalid argument"},
+			}}
+		}
+		return wire.ValidateResult{Rejected: []wire.Rejection{}}
+	}}
+	d, err := planEnv(t.Context(), env, sized, labSecrets, ff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []refusal{
+		{Code: "refused.render_rejected", What: "temporal@.service rejected by systemd on vps-01", Why: "/etc/systemd/system/temporal@.service:13: Failed to parse service restart specifier, ignoring: sometimes", Fix: "nothing changed; fix the value named above"},
+		{Code: "refused.render_rejected", What: "temporal@history.service.d/limits.conf rejected by systemd on vps-01", Why: "/etc/systemd/system/temporal@history.service.d/limits.conf:3: Invalid memory limit 'abcM', ignoring: Invalid argument", Fix: "nothing changed; fix the value named above"},
+	}
+	if !slices.Equal(d.Refusals, want) {
+		t.Errorf("refusals =\n%+v\nwant\n%+v", d.Refusals, want)
+	}
+	if d.Nodes[0].Validated.OK || term.ExitCode(d.exit()) != 3 {
+		t.Errorf("vps-01 validated %v, exit %d", d.Nodes[0].Validated.OK, term.ExitCode(d.exit()))
+	}
 }
 
 // TestPlanValidateFails: a node that cannot run validate fails the plan, as facts does.

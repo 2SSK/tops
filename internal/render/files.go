@@ -34,6 +34,14 @@ func EnvPath(role string) string { return "/etc/temporal/" + role + ".env" }
 // DynamicConfigPath is a role's dynamic config.
 func DynamicConfigPath(role string) string { return "/etc/temporal/dynamicconfig-" + role + ".yaml" }
 
+// UnitPath is the unit each role runs as an instance of: temporal@<role>.service.
+const UnitPath = "/etc/systemd/system/temporal@.service"
+
+// LimitsPath is a role's drop-in for its unit: its memory and CPU limits.
+func LimitsPath(role string) string {
+	return "/etc/systemd/system/temporal@" + role + ".service.d/limits.conf"
+}
+
 // File is one rendered file and how tops installs it
 type File struct {
 	Path    string
@@ -62,7 +70,7 @@ type roleData struct {
 // Render renders every file of a node.
 func Render(in NodeInput) (FileSet, error) {
 	todo := []fromTemplate{
-		{File{Path: "/etc/systemd/system/temporal@.service", Mode: 0o644, Owner: "root", Group: "root", Effect: RestartAll}, "temporal@.service", nil},
+		{File{Path: UnitPath, Mode: 0o644, Owner: "root", Group: "root", Effect: RestartAll}, "temporal@.service", nil},
 		{File{Path: SharedEnvPath, Mode: 0o600, Owner: "root", Group: "root", Effect: RestartAll, Secret: true}, "temporal.env", in},
 	}
 	for _, r := range in.Roles {
@@ -101,7 +109,7 @@ func roleFiles(in NodeInput, r RoleInput) []fromTemplate {
 	return []fromTemplate{
 		{File{Path: ConfigPath(r.Role), Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "server.yaml", newServerData(in, r)},
 		{File{Path: EnvPath(r.Role), Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: RestartRole}, "role.env", d},
-		{File{Path: "/etc/systemd/system/temporal@" + r.Role + ".service.d/limits.conf", Mode: 0o644, Owner: "root", Group: "root", Role: r.Role, Effect: RestartRole}, "limits.conf", d},
+		{File{Path: LimitsPath(r.Role), Mode: 0o644, Owner: "root", Group: "root", Role: r.Role, Effect: RestartRole}, "limits.conf", d},
 		{File{Path: DynamicConfigPath(r.Role), Mode: 0o640, Owner: "root", Group: "temporal", Role: r.Role, Effect: Dynamic}, "dynamicconfig.yaml", d},
 	}
 }

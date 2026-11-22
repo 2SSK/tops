@@ -188,15 +188,20 @@ func planNodes(ctx context.Context, version string, inputs []render.NodeInput, s
 	return plans, slices.Concat(rejected...), nil
 }
 
-// renderRejected is the refusal for one file the target release refused (design brief).
+// renderRejected is the refusal for one file the target release or systemd refused (design brief).
 func renderRejected(node, version string, r wire.Rejection) refusal {
-	file := render.ConfigPath(r.Role)
-	if r.File == "dynamicConfig" {
-		file = render.DynamicConfigPath(r.Role)
+	file, by := path.Base(render.ConfigPath(r.Role)), "temporal-server "+version
+	switch r.File {
+	case "dynamicConfig":
+		file = path.Base(render.DynamicConfigPath(r.Role))
+	case "unit":
+		file, by = path.Base(render.UnitPath), "systemd"
+	case "limits":
+		file, by = strings.TrimPrefix(render.LimitsPath(r.Role), "/etc/systemd/system/"), "systemd"
 	}
 	return refusal{
 		Code: "refused.render_rejected",
-		What: fmt.Sprintf("%s rejected by temporal-server %s on %s", path.Base(file), version, node),
+		What: fmt.Sprintf("%s rejected by %s on %s", file, by, node),
 		Why:  r.Message,
 		Fix:  "nothing changed; fix the value named above",
 	}

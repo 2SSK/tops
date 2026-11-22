@@ -52,6 +52,11 @@ func (h Host) Validate(ctx context.Context, runID string, v wire.Validate) (wire
 		}
 		r.Rejected = append(r.Rejected, rejected...)
 	}
+	rejected, err := h.validateUnits(ctx, run, v)
+	if err != nil {
+		return wire.ValidateResult{}, err
+	}
+	r.Rejected = append(r.Rejected, rejected...)
 	return r, nil
 }
 
@@ -185,4 +190,79 @@ func mask(msg string, f wire.RoleFiles) string {
 	}
 
 	return msg
+}
+
+// unitDir is where the unit and its drop-ins are installed; messages name them there.
+const unitDir = "/etc/systemd/system/"
+
+// validateUnits checks the unit and each role's drop-in as systemd will load them, written to
+// dir as they would be to /etc/systemd/system: with only dir on the unit path, nothing already
+// on the node joins in. systemd ignores a setting it cannot parse with a warning and exits 0,
+// so any line it prints is a rejection.
+func (h Host) validateUnits(ctx context.Context, dir string, v wire.Validate) ([]wire.Rejection, error) {
+	files := map[string]string{filepath.Join(dir, "temporal@.service"): v.Unit}
+	args := []string{"verify", "--man=no", "--recursive-errors=no"}
+	for _, f := range v.Roles {
+		unit := filepath.Join(dir, "temporal@"+f.Role+".service")
+		files[filepath.Join(unit+".d", "limits.conf")] = f.Limits
+		args = append(args, unit) // the instance: systemd loads the template and the drop-in for it
+	}
+	for path, content := range files {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return nil, fmt.Errorf("validate units: %w", err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			return nil, fmt.Errorf("validate units: %w", err)
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, filepath.Join(h.Root, "usr/bin/systemd-analyze"), args...) //nolint:gosec	// a fixed binary, paths we built
+
+	cmd.Env = []string{"SYSTEMD_UNIT_PATH=" + dir} // no trailing ":": /etc/systemd/system stays out
+	out, err := cmd.CombinedOutput()
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) {
+		return nil, fmt.Errorf("run systemd-analyze verify: %w", err)
+	}
+	return unitRejections(string(out), dir, v.Roles, exit), nil
+}
+
+// unitRejections sorts systemd's lines by the file they are about, a role's drop-in, else the
+// unit, and names it where it will be installed. Each line counts once: systemd loads the
+// template again for every instance. A failure without a line is the unit's.
+func unitRejections(out, dir string, roles []wire.RoleFiles, exit *exec.ExitError) []wire.Rejection {
+	problems := map[string][]string{} // by role, "" for the unit
+	for line := range strings.Lines(out) {
+		line = strings.ReplaceAll(strings.TrimSpace(line), dir+"/", unitDir)
+		if line == "" {
+			continue
+		}
+		role := dropInRole(line, roles)
+		if !slices.Contains(problems[role], line) {
+			problems[role] = append(problems[role], line)
+		}
+	}
+	if exit != nil && len(problems) == 0 {
+		problems[""] = []string{exit.Error()}
+	}
+	var rejected []wire.Rejection
+	if p := problems[""]; len(p) > 0 {
+		rejected = append(rejected, wire.Rejection{File: "unit", Message: strings.Join(p, "; ")})
+	}
+	for _, f := range roles {
+		if p := problems[f.Role]; len(p) > 0 {
+			rejected = append(rejected, wire.Rejection{Role: f.Role, File: "limits", Message: strings.Join(p, "; ")})
+		}
+	}
+	return rejected
+}
+
+// dropInRole is the role whose drop-in a line of systemd's is about; "" is the unit.
+func dropInRole(line string, roles []wire.RoleFiles) string {
+	for _, f := range roles {
+		if strings.HasPrefix(line, unitDir+"temporal@"+f.Role+".service.d/") {
+			return f.Role
+		}
+	}
+	return ""
 }

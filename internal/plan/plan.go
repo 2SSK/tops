@@ -85,19 +85,20 @@ func Want(files render.FileSet) wire.FactsArgs {
 	return wire.FactsArgs{Want: want, Dirs: ownedDirs}
 }
 
-// Validate is what the node's helper checks with the target release: each role's server config
-// and dynamic config, with the environment systemd gives that role, the shared file first.
+// Validate is what the node's helper checks before anything changes: the unit, and each
+// role's server config, dynamic config and drop-in, with the environment systemd gives that
+// role, the shared file first.
 func Validate(version string, files render.FileSet) wire.Validate {
 	byPath := map[string]render.File{}
 	for _, f := range files {
 		byPath[f.Path] = f
 	}
-	v := wire.Validate{Version: version, Roles: []wire.RoleFiles{}}
+	v := wire.Validate{Version: version, Unit: string(byPath[render.UnitPath].Content), Roles: []wire.RoleFiles{}}
 	for _, f := range files {
 		if f.Path != render.ConfigPath(f.Role) {
 			continue // one entry per role, in the files' order
 		}
-		r := wire.RoleFiles{Role: f.Role, Config: string(f.Content), DynamicConfig: string(byPath[render.DynamicConfigPath(f.Role)].Content), Env: []string{}, Secrets: []string{}}
+		r := wire.RoleFiles{Role: f.Role, Config: string(f.Content), DynamicConfig: string(byPath[render.DynamicConfigPath(f.Role)].Content), Limits: string(byPath[render.LimitsPath(f.Role)].Content), Env: []string{}, Secrets: []string{}}
 		for _, env := range []render.File{byPath[render.SharedEnvPath], byPath[render.EnvPath(f.Role)]} {
 			for line := range strings.Lines(string(env.Content)) {
 				line = strings.TrimSpace(line)

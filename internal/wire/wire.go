@@ -146,6 +146,7 @@ type StageResult struct {
 // node changes: each role's files, as that role's temporal-server would read them.
 type Validate struct {
 	Version string      `json:"version"` // a staged server release, "1.31.3"
+	Unit    string      `json:"unit"`    // temporal@.service
 	Roles   []RoleFiles `json:"roles"`
 }
 
@@ -154,6 +155,7 @@ type RoleFiles struct {
 	Role          string   `json:"role"`
 	Config        string   `json:"config"`        // <role>.yaml
 	DynamicConfig string   `json:"dynamicConfig"` // dynamicconfig-<role>.yaml
+	Limits        string   `json:"limits"`        // temporal@<role>.service.d/limits.conf
 	Env           []string `json:"env"`           // KEY=VALUE: temporal.env, then <role>.env, as systemd passes them
 	Secrets       []string `json:"secrets"`       // keys of Env whose values never appear in a message
 }
@@ -163,9 +165,9 @@ type ValidateResult struct {
 	Rejected []Rejection `json:"rejected"`
 }
 
-// Rejection is one role's file the target binary refused, with its message, secrets masked.
+// Rejection is one file the target binary or systemd refused, with its messgae, secrets masked.
 type Rejection struct {
-	Role    string `json:"role"`
-	File    string `json:"file"` // "config" or "dynamicConfig", as in RoleFiles
+	Role    string `json:"role"` // "" for the unit
+	File    string `json:"file"` // "config", "dynamicConfig" or "limits", as in RoleFiles, or "unit"
 	Message string `json:"message"`
 }

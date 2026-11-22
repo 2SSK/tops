@@ -55,7 +55,33 @@ echo "unexpected arguments: $*" >&2
 exit 64
 `
 
-// validateNode is a fake node with 1.31.3 staged as the fake server; log is what it ran.
+// fakeAnalyze is a systemd-analyze that behaves like 255's verify where validate depends on
+// it: for each instance it loads the template from $SYSTEMD_UNIT_PATH and the instance's
+// drop-in, prints one line per setting it cannot parse on stderr, the template's again for
+// every instance, and exits 0 all the same. It logs its arguments and the files it read.
+const fakeAnalyze = `#!/bin/sh
+log=LOG
+echo "systemd-analyze $* SYSTEMD_UNIT_PATH=$SYSTEMD_UNIT_PATH leak=${TOPS_TEST_LEAK-unset}" >> "$log"
+for u in "$@"; do
+	case $u in */temporal@*.service) ;; *) continue ;; esac # the instances, not verify or its options
+	for f in "$SYSTEMD_UNIT_PATH/temporal@.service" "$u.d/limits.conf"; do
+		[ -f "$f" ] || continue
+		echo "read $f" >> "$log"
+		n=0
+		while IFS= read -r line; do
+			n=$((n + 1))
+			case $line in
+			Bogus=*) echo "$f:$n: Unknown key name 'Bogus' in section 'Service', ignoring." >&2 ;;
+			MemoryMax=abc*) echo "$f:$n: Invalid memory limit '${line#MemoryMax=}', ignoring: Invalid argument" >&2 ;;
+			esac
+		done < "$f"
+	done
+done
+exit 0
+`
+
+// validateNode is a fake node with 1.31.3 staged as the fake server and systemd-analyze as
+// the fake one; log is what they ran.
 type validateNode struct {
 	host Host
 	log  string
@@ -68,6 +94,11 @@ func newValidateNode(t *testing.T) *validateNode {
 	bin := filepath.Join(root, "opt/temporal/releases/1.31.3/temporal-server")
 	writeFile(t, bin, strings.Replace(fakeServer, "log=LOG", "log="+n.log, 1))
 	if err := os.Chmod(bin, 0o755); err != nil { //nolint:gosec // a test binary
+		t.Fatal(err)
+	}
+	analyze := filepath.Join(root, "usr/bin/systemd-analyze")
+	writeFile(t, analyze, strings.Replace(fakeAnalyze, "log=LOG", "log="+n.log, 1))
+	if err := os.Chmod(analyze, 0o755); err != nil { //nolint:gosec // a test binary
 		t.Fatal(err)
 	}
 	t.Setenv("TOPS_TEST_LEAK", "1") // in the helper's environment, never in the server's
@@ -97,20 +128,24 @@ func (n *validateNode) assertRunDirGone(t *testing.T) {
 
 const pgPassword = "s3cret-pg.pass"
 
+// unit stands for temporal@.service.
+const unit = "[Unit]\nDescription=Temporal %i\n[Service]\nExecStart=/opt/temporal/current/temporal-server start --service %i\n"
+
 func role(name, config, dynamic string) wire.RoleFiles {
 	return wire.RoleFiles{
-		Role: name, Config: "# enable-template\npersistence: {}\n" + config, DynamicConfig: dynamic,
+		Role: name, Config: "# enable-template\npersistence: {}\n" + config, DynamicConfig: dynamic, Limits: "[Service]\nMemoryMax=340M\n",
 		Env:     []string{"TOPS_PG_PASSWORD=" + pgPassword, "GOMEMLIMIT=812MiB", "GOMAXPROCS=2"},
 		Secrets: []string{"TOPS_PG_PASSWORD"},
 	}
 }
 
 // TestValidateAccepts: each role's files go to /run/tops/<run-id>/<role>/, render-config sees
-// exactly the role's environment and nothing of the helper's, and the run's directory is gone
-// afterwards.
+// exactly the role's environment and nothing of the helper's; the unit and the drop-ins go to
+// /run/tops/<run-id>/ as to /etc/systemd/system, the only directory on systemd's unit path,
+// which verifies each role's instance. The run's directory is gone afterwards.
 func TestValidateAccepts(t *testing.T) {
 	n := newValidateNode(t)
-	v := wire.Validate{Version: "1.31.3", Roles: []wire.RoleFiles{role("frontend", "", "frontend.x: 1\n"), role("history", "", "")}}
+	v := wire.Validate{Version: "1.31.3", Unit: unit, Roles: []wire.RoleFiles{role("frontend", "", "frontend.x: 1\n"), role("history", "", "")}}
 	r, err := n.host.Validate(t.Context(), "r-1", v)
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +158,11 @@ func TestValidateAccepts(t *testing.T) {
 		"validate-dynamic-config /run/tops/r-1/frontend/dynamicconfig.yaml leak=unset",
 		"render-config /run/tops/r-1/history GOMEMLIMIT=812MiB leak=unset",
 		"validate-dynamic-config /run/tops/r-1/history/dynamicconfig.yaml leak=unset",
+		"systemd-analyze verify --man=no --recursive-errors=no /run/tops/r-1/temporal@frontend.service /run/tops/r-1/temporal@history.service SYSTEMD_UNIT_PATH=/run/tops/r-1 leak=unset",
+		"read /run/tops/r-1/temporal@.service",
+		"read /run/tops/r-1/temporal@frontend.service.d/limits.conf",
+		"read /run/tops/r-1/temporal@.service",
+		"read /run/tops/r-1/temporal@history.service.d/limits.conf",
 	}
 	if got := n.ran(t); !reflect.DeepEqual(got, want) {
 		t.Errorf("ran\n%q\nwant\n%q", got, want)
@@ -156,18 +196,43 @@ func TestValidateRejects(t *testing.T) {
 	n.assertRunDirGone(t)
 }
 
+// TestValidateUnits: what systemd cannot parse is a rejection of the file it is in, the unit
+// or a role's drop-in, named where it will be installed, each line once, though systemd exits
+// 0 and prints the template's lines for every instance.
+func TestValidateUnits(t *testing.T) {
+	n := newValidateNode(t)
+	frontend, history, matching := role("frontend", "", ""), role("history", "", ""), role("matching", "", "")
+	frontend.Limits += "MemoryMax=abcM\nBogus=1\n"
+	v := wire.Validate{Version: "1.31.3", Unit: unit + "Bogus=1\n", Roles: []wire.RoleFiles{frontend, history, matching}}
+	r, err := n.host.Validate(t.Context(), "r-1", v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []wire.Rejection{
+		{File: "unit", Message: "/etc/systemd/system/temporal@.service:5: Unknown key name 'Bogus' in section 'Service', ignoring."},
+		{Role: "frontend", File: "limits", Message: "/etc/systemd/system/temporal@frontend.service.d/limits.conf:3: Invalid memory limit 'abcM', ignoring: Invalid argument; " +
+			"/etc/systemd/system/temporal@frontend.service.d/limits.conf:4: Unknown key name 'Bogus' in section 'Service', ignoring."},
+	}
+	if !reflect.DeepEqual(r.Rejected, want) {
+		t.Errorf("rejected\n%+v\nwant\n%+v", r.Rejected, want)
+	}
+	n.assertRunDirGone(t)
+}
+
 // TestValidateFailsWithoutMessage: a binary that fails and says nothing is still a rejection,
 // never an accepted file.
 func TestValidateFailsWithoutMessage(t *testing.T) {
 	n := newValidateNode(t)
 	writeFile(t, filepath.Join(n.host.Root, "opt/temporal/releases/1.31.3/temporal-server"), "#!/bin/sh\nexit 3\n")
-	r, err := n.host.Validate(t.Context(), "r-1", wire.Validate{Version: "1.31.3", Roles: []wire.RoleFiles{role("frontend", "", "")}})
+	writeFile(t, filepath.Join(n.host.Root, "usr/bin/systemd-analyze"), "#!/bin/sh\nexit 1\n")
+	r, err := n.host.Validate(t.Context(), "r-1", wire.Validate{Version: "1.31.3", Unit: unit, Roles: []wire.RoleFiles{role("frontend", "", "")}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []wire.Rejection{
 		{Role: "frontend", File: "config", Message: "exit status 3"},
 		{Role: "frontend", File: "dynamicConfig", Message: "exit status 3"},
+		{File: "unit", Message: "exit status 1"},
 	}
 	if !reflect.DeepEqual(r.Rejected, want) {
 		t.Errorf("rejected %+v, want %+v", r.Rejected, want)
@@ -195,6 +260,20 @@ func TestValidateBinaryWontRun(t *testing.T) {
 	}
 	if _, err := n.host.Validate(t.Context(), "r-1", wire.Validate{Version: "1.31.3", Roles: []wire.RoleFiles{role("frontend", "", "")}}); err == nil {
 		t.Error("a binary that cannot run validated the files")
+	}
+	n.assertRunDirGone(t)
+}
+
+// TestValidateNoSystemd: a node where systemd-analyze cannot run cannot check the units: an
+// error, not a rejection; the run directory still goes.
+func TestValidateNoSystemd(t *testing.T) {
+	n := newValidateNode(t)
+	if err := os.Remove(filepath.Join(n.host.Root, "usr/bin/systemd-analyze")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := n.host.Validate(t.Context(), "r-1", wire.Validate{Version: "1.31.3", Unit: unit, Roles: []wire.RoleFiles{role("frontend", "", "")}})
+	if err == nil || !strings.Contains(err.Error(), "systemd-analyze") {
+		t.Errorf("err = %v, want systemd-analyze's", err)
 	}
 	n.assertRunDirGone(t)
 }

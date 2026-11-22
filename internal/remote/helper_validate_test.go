@@ -105,7 +105,8 @@ func stagedNode(t *testing.T) (*container, *Node) {
 }
 
 // TestHelperValidateGoldens is T3.2's done-when: every role's golden render validates with
-// the real temporal-server 1.31.3, and /run/tops is empty afterwards.
+// the real temporal-server 1.31.3, the unit and drop-ins with the node's systemd, and
+// /run/tops is empty afterwards.
 func TestHelperValidateGoldens(t *testing.T) {
 	c, n := stagedNode(t)
 	for _, node := range []string{"vps-01", "vps-02", "vps-03"} {
@@ -127,21 +128,13 @@ func TestHelperValidateGoldens(t *testing.T) {
 }
 
 // TestHelperValidateRejects: for each role, a config and a dynamic config the real release
-// refuses. The config puts the password where a number goes, so Temporal's own message quotes
-// it, shortened by yaml.v3 to its first 7 characters: the rejection must say *** instead.
+// refuses, and a drop-in systemd refuses, and a unit it refuses. The config puts the password
+// where a number goes, so Temporal's own message quotes it, shortened by yaml.v3 to its first
+// 7 characters: the rejection must say *** instead. systemd's say where each file goes, once.
 func TestHelperValidateRejects(t *testing.T) {
 	c, n := stagedNode(t)
 	v := plan.Validate(temporalVersion, goldenFiles(t, "vps-01"))
-	var want []string
-	for i := range v.Roles {
-		r := &v.Roles[i]
-		if !strings.Contains(r.Config, "numHistoryShards: 512") {
-			t.Fatalf("%s.yaml has no numHistoryShards: 512 to break", r.Role)
-		}
-		r.Config = strings.Replace(r.Config, "numHistoryShards: 512", `numHistoryShards: {{ env "TOPS_PG_PASSWORD" }}`, 1)
-		r.DynamicConfig += "tops.notAKey:\n  - value: 1\n"
-		want = append(want, r.Role+" config", r.Role+" dynamicConfig")
-	}
+	want, wantMessage := breakFiles(t, &v)
 	r, err := n.Validate(t.Context(), v)
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +142,9 @@ func TestHelperValidateRejects(t *testing.T) {
 	var got []string
 	for _, rej := range r.Rejected {
 		got = append(got, rej.Role+" "+rej.File)
+		if m, ok := wantMessage[rej.Role+" "+rej.File]; ok && rej.Message != m {
+			t.Errorf("%s %s: message %q, want %q", rej.Role, rej.File, rej.Message, m)
+		}
 		if strings.Contains(rej.Message, "lab-pas") {
 			t.Errorf("%s %s: the message shows the password: %s", rej.Role, rej.File, rej.Message)
 		}
@@ -162,4 +158,41 @@ func TestHelperValidateRejects(t *testing.T) {
 	if got := docker(t, nil, "exec", c.id, "ls", "-A", "/run/tops"); got != "" {
 		t.Errorf("/run/tops holds %q after validate", got)
 	}
+}
+
+// breakFiles breaks every file of v once and returns the rejections that follow, as
+// "<role> <file>", in the helper's order, and systemd's exact message for its files.
+func breakFiles(t *testing.T, v *wire.Validate) ([]string, map[string]string) {
+	t.Helper()
+	if !strings.Contains(v.Unit, "\nRestart=on-failure\n") {
+		t.Fatal("temporal@.service has no Restart=on-failure to break")
+	}
+	v.Unit = strings.Replace(v.Unit, "\nRestart=on-failure\n", "\nRestart=sometimes\n", 1)
+	wantMessage := map[string]string{
+		" unit": fmt.Sprintf("/etc/systemd/system/temporal@.service:%d: Failed to parse service restart specifier, ignoring: sometimes", lineOf(v.Unit, "Restart=sometimes")),
+	}
+	var want, limits []string
+	for i := range v.Roles {
+		r := &v.Roles[i]
+		if !strings.Contains(r.Config, "numHistoryShards: 512") {
+			t.Fatalf("%s.yaml has no numHistoryShards: 512 to break", r.Role)
+		}
+		r.Config = strings.Replace(r.Config, "numHistoryShards: 512", `numHistoryShards: {{ env "TOPS_PG_PASSWORD" }}`, 1)
+		r.DynamicConfig += "tops.notAKey:\n  - value: 1\n"
+		r.Limits += "MemoryMax=lots\n"
+		want = append(want, r.Role+" config", r.Role+" dynamicConfig")
+		limits = append(limits, r.Role+" limits")
+		wantMessage[r.Role+" limits"] = fmt.Sprintf("/etc/systemd/system/temporal@%s.service.d/limits.conf:%d: Invalid memory limit 'lots', ignoring: Invalid argument", r.Role, lineOf(r.Limits, "MemoryMax=lots"))
+	}
+	return append(append(want, " unit"), limits...), wantMessage
+}
+
+// lineOf is the number of the line of s that is line, from 1, as systemd counts.
+func lineOf(s, line string) int {
+	for i, l := range strings.Split(s, "\n") {
+		if l == line {
+			return i + 1
+		}
+	}
+	return 0
 }
