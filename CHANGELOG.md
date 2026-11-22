@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The node helper's `stage` op, which `bootstrap` will run: it creates the `temporal` system user (home `/var/lib/temporal`, 0750, no shell) and installs the server and CLI releases. The workstation reads each archive's sha256 from the release's `checksums.txt` over TLS; the node downloads the archive and refuses one that does not match (`release.checksum`). Only the named binaries are extracted, into a temporary directory renamed into place, so a half-installed release never looks installed. `/opt/temporal/current` is set on the first install only; the newest 3 server releases are kept. A second run changes and downloads nothing.
+- Helper ops time out after 60 s, `stage` after 10 min.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/2SSK/tops/internal/term"
 	"github.com/2SSK/tops/internal/wire"
@@ -24,6 +25,19 @@ func cmdHelper(sha256 string, op wire.Op) string {
 	return "sudo -n " + helperDir(sha256) + "/tops node " + string(op)
 }
 
+// How long one helper op may take (TRD "Timeouts"); stage downloads  releases.
+const (
+	opTimeout    = 60 * time.Second
+	stageTimeout = 10 * time.Minute
+)
+
+func timeout(op wire.Op) time.Duration {
+	if op == wire.OpStage {
+		return stageTimeout
+	}
+	return opTimeout
+}
+
 // errNoHelper: the node has no helper at that path yet; upload it.
 var errNoHelper = errors.New("the helper is not installed")
 
@@ -32,6 +46,8 @@ func (c *Client) call(ctx context.Context, sha256 string, op wire.Op, req wire.R
 	if err != nil {
 		return fmt.Errorf("encode the %s request: %w", op, err)
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout(op))
+	defer cancel()
 	var stdout, stderr bytes.Buffer
 	err = c.run(ctx, cmdHelper(sha256, op), bytes.NewReader(in), &stdout, &stderr)
 	c.logHelper(op, stderr.Bytes())
@@ -80,14 +96,29 @@ func (c *Client) logHelper(op wire.Op, stderr []byte) {
 	}
 }
 
-// Facts asks the node's helper what is there now, compared with tops would write.
-func (n *Node) Facts(ctx context.Context, args wire.FactsArgs) (wire.Facts, error) {
+// nodeOp runs one op on the node's helper with the run's request and args, and decodes its
+// result.
+func nodeOp[T any](ctx context.Context, n *Node, op wire.Op, args any) (T, error) {
+	var result T
 	req := n.req
-	// FactsArgs is a map of strings and a list of strings: it always encodes.
-	req.Args, _ = json.Marshal(args)
-	var f wire.Facts
-	if err := n.call(ctx, n.SHA256, wire.OpFacts, req, &f); err != nil {
-		return wire.Facts{}, err
+	var err error
+	if req.Args, err = json.Marshal(args); err != nil {
+		return result, fmt.Errorf("encode the %s args: %w", op, err)
 	}
-	return f, nil
+	if err := n.call(ctx, n.SHA256, op, req, &result); err != nil {
+		var zero T
+		return zero, err
+	}
+	return result, nil
+}
+
+// Facts asks the node's helper what is there now, compared with what  tops would write.
+func (n *Node) Facts(ctx context.Context, args wire.FactsArgs) (wire.Facts, error) {
+	return nodeOp[wire.Facts](ctx, n, wire.OpFacts, args)
+}
+
+// Stage installs the temporal user and releases on the node. The node downloads each archive
+// and checks it against the sha256 the workstation read from checksums.txt.
+func (n *Node) Stage(ctx context.Context, s wire.Stage) (wire.StageResult, error) {
+	return nodeOp[wire.StageResult](ctx, n, wire.OpStage, s)
 }
