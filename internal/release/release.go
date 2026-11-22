@@ -66,7 +66,7 @@ func (f Fetcher) Resolve(ctx context.Context, kind Kind, version, arch string) (
 // Get fetches url, at most limit bytes.
 func (f Fetcher) Get(ctx context.Context, url string, limit int64) ([]byte, error) {
 	fail := func(why string) error {
-		return &term.UserError{Code: "release.download", What: "cannot download " + url, Why: why, Fix: "check the network and try a gain"}
+		return &term.UserError{Code: "release.download", What: "cannot download " + url, Why: why, Fix: "check the network and try again"}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
