@@ -14,7 +14,8 @@ import (
 
 // fakeServer is a temporal-server that behaves like 1.31.3 where validate depends on it:
 //   - render-config finds production.yaml under --config, fails with "Unable to load
-//     configuration: …" on stderr after log lines, exit 1, and on success prints the
+//     configuration: …" on stderr after log lines, exit 1, over two lines for a YAML type
+//     error, which quotes the first 7 characters of a long value, and on success prints the
 //     config with the password on stdout;
 //   - validate-dynamic-config lists errors and warnings on stdout and exits 0 either way.
 //
@@ -30,6 +31,9 @@ case "$1 $3 $4 $5" in
 	while IFS= read -r line; do
 		case $line in
 		*reject-me*) echo "Unable to load configuration: password $TOPS_PG_PASSWORD is wrong" >&2; exit 1 ;;
+		*reject-yaml*) # what 1.31.3 prints for a password where a number goes: yaml.v3 shortens it
+			printf 'Unable to load configuration: yaml: unmarshal errors:\n  line 5: cannot unmarshal !!str \140%.7s...\140 into int32\n' "$TOPS_PG_PASSWORD" >&2
+			exit 1 ;;
 		esac
 	done < "$2/production.yaml"
 	echo "password: $TOPS_PG_PASSWORD"
@@ -127,12 +131,14 @@ func TestValidateAccepts(t *testing.T) {
 }
 
 // TestValidateRejects: what the binary refuses is a Rejection per role and file, with
-// Temporal's own message and the password masked, and nothing is left in /run/tops.
+// Temporal's whole message on one line and the password masked, also where YAML shortened
+// it, and nothing is left in /run/tops.
 func TestValidateRejects(t *testing.T) {
 	n := newValidateNode(t)
 	v := wire.Validate{Version: "1.31.3", Roles: []wire.RoleFiles{
 		role("frontend", "reject-me: 1\n", ""),
 		role("history", "", "badKey: 1\noldKey: 2\n"),
+		role("matching", "reject-yaml: 1\n", ""),
 		role("worker", "", ""),
 	}}
 	r, err := n.host.Validate(t.Context(), "r-1", v)
@@ -142,6 +148,7 @@ func TestValidateRejects(t *testing.T) {
 	want := []wire.Rejection{
 		{Role: "frontend", File: "config", Message: "Unable to load configuration: password *** is wrong"},
 		{Role: "history", File: "dynamicConfig", Message: "error: unknown key badKey; warning: oldKey: deprecated"},
+		{Role: "matching", File: "config", Message: "Unable to load configuration: yaml: unmarshal errors: line 5: cannot unmarshal !!str `***` into int32"},
 	}
 	if !reflect.DeepEqual(r.Rejected, want) {
 		t.Errorf("rejected\n%+v\nwant\n%+v", r.Rejected, want)

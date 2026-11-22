@@ -154,23 +154,35 @@ func validateDynamicConfig(ctx context.Context, bin, file string) (string, error
 	return strings.Join(problems, "; "), nil
 }
 
-// why a command failed: the last line of its stderr, after any log lines, or its exit status
-// when it said nothing. Never "", which would read as accepted.
+// why a command failed: render-config's error, which spans lines when YAML does not decode,
+// else the last line of stderr (log lines comes first), on one line; its exit status when it
+// said nothing. Never "", which would read as accepted.
 func why(stderr string, exit *exec.ExitError) string {
-	lines := strings.Split(strings.TrimSpace(stderr), "\n")
-	if last := strings.TrimSpace(lines[len(lines)-1]); last != "" {
-		return last
+	s := strings.TrimSpace(stderr)
+	if i := strings.LastIndex(s, "Unable to load configuration:"); i >= 0 {
+		s = s[i:]
+	} else if i := strings.LastIndex(s, "\n"); i >= 0 {
+		s = s[i+1:]
+	}
+	if s = strings.Join(strings.Fields(s), " "); s != "" {
+		return s
 	}
 	return exit.Error()
 }
 
-// mask replaces the values of the role's secret variables in msg with ***.
+// mask replaces the values of the role's secret variables in msg with ***.yaml.v3 quotes a
+// value longer than 10 characters as its first 7 and "...", so that form goes too.
 func mask(msg string, f wire.RoleFiles) string {
 	for _, kv := range f.Env {
 		key, value, _ := strings.Cut(kv, "=")
-		if value != "" && slices.Contains(f.Secrets, key) {
-			msg = strings.ReplaceAll(msg, value, "***")
+		if value == "" || !slices.Contains(f.Secrets, key) {
+			continue
+		}
+		msg = strings.ReplaceAll(msg, value, "***")
+		if len(value) > 10 {
+			msg = strings.ReplaceAll(msg, value[:7]+"...", "***")
 		}
 	}
+
 	return msg
 }
