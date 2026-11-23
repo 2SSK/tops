@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/2SSK/tops/internal/wire"
 )
@@ -34,10 +35,11 @@ type Host struct {
 	Systemd  func(ctx context.Context) (Systemd, error)
 	AddUser  func(ctx context.Context, name, home string) error // useradd --system
 	HTTP     *http.Client                                       // stage's downloads
+	Now      func() time.Time                                   // the node's clock, which leases run on
 }
 
 // System is the machine the helper runs on.
-var System = Host{Root: "/", Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced, Systemd: systemBus, AddUser: addUser, HTTP: &http.Client{Timeout: stageTimeout}}
+var System = Host{Root: "/", Proc: "/proc", Cgroup: cgroupMount, Etc: "/etc", Affinity: pid1Affinity, Clock: clockSynced, Systemd: systemBus, AddUser: addUser, HTTP: &http.Client{Timeout: stageTimeout}, Now: time.Now}
 
 // Memory returns the effective memory in bytes: MemTotal, lowered by the memory.max of
 // PID 1's cgroup or of any ancestor visible from here.

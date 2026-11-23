@@ -23,6 +23,7 @@ const (
 	OpStage    Op = "stage"
 	OpValidate Op = "validate"
 	OpSchema   Op = "schema"
+	OpLock     Op = "lock"
 )
 
 // Request is the one JSON document a helper op reads on stdin.
@@ -191,4 +192,39 @@ type SchemaTarget struct {
 	Database   string `json:"database"`   // "temporal"
 	SchemaName string `json:"schemaName"` // "postgresql/v12/temporal"
 	Create     bool   `json:"create"`     // the workstation found no such database
+}
+
+// Lease is /var/lib/tops/lock: the one run that may change this node, until RenewedAt plus
+// its TTL by the node's clock.
+type Lease struct {
+	Env        string    `json:"env"`
+	Cluster    string    `json:"cluster"`
+	RunID      string    `json:"runId"`      // the request's: fenced ops must carry it
+	ApplyID    string    `json:"applyId"`    // the request's
+	Command    string    `json:"command"`    // "apply", "rollback 20261023T153012Z-7f3a"
+	By         string    `json:"by"`         // "ssk@archbtw"
+	PID        int       `json:"pid"`        // the workstation's
+	AcquiredAt time.Time `json:"acquiredAt"` // set by the helper, node clock
+	RenewedAt  time.Time `json:"renewedAt"`  // set by the helper, node clock
+	TTLSeconds int       `json:"ttlSeconds"` // 120
+}
+
+// The lock op's actions.
+const (
+	LockAcquire = "acquire"
+	LockRenew   = "renew"
+	LockRelease = "release"
+)
+
+// Lock asks the helper to acquire, renew or release the node's lease for the request's run.
+type Lock struct {
+	Action string `json:"action"`
+	Lease  Lease  `json:"lease"` // acquire: who and what; the helper sets the run, apply id and times
+}
+
+// LockResult says whether the run holds the lease after the action, and whose it is.
+type LockResult struct {
+	Held     bool   `json:"held"`
+	Lease    *Lease `json:"lease"`    // the node's lease now; nil when free
+	Previous *Lease `json:"previous"` // the stale lease acquire took over
 }

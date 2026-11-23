@@ -49,6 +49,7 @@ var handlers = map[wire.Op]handler{
 	wire.OpStage:    stage,
 	wire.OpValidate: validate,
 	wire.OpSchema:   schema,
+	wire.OpLock:     lock,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -141,6 +142,18 @@ func schema(ctx context.Context, env Env, req wire.Request) (any, error) {
 		return nil, badRequest("args", err)
 	}
 	return struct{}{}, env.Host.Schema(ctx, s)
+}
+
+func lock(ctx context.Context, env Env, req wire.Request) (any, error) {
+	var l wire.Lock
+	if err := decodeArgs(req.Args, &l); err != nil {
+		return nil, err
+	}
+	l.Lease.RunID, l.Lease.ApplyID = req.RunID, req.ApplyID // the fencing token is the request's
+	if err := checkLock(l); err != nil {
+		return nil, badRequest("args", err)
+	}
+	return env.Host.Lock(ctx, l)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so

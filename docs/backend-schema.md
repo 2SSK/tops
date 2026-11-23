@@ -343,7 +343,7 @@ type Event struct {
 | `validate` | `Validate`                                                                             | `ValidateResult`                             | no       |
 | `stage`    | `Stage`                                                                                | `{ "changed": ["…"] }`                       | progress |
 | `schema`   | `Schema`                                                                               | `{}`; the workstation reads `schema_version` before and after | no |
-| `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease, "takeOverStale": bool }`   | `{ "held": bool, "lease": Lease, "previous": Lease? }` | no |
+| `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease }`; run and apply id from the request | `{ "held": bool, "lease": Lease?, "previous": Lease? }` | no |
 | `write`    | `{ "files": [File], "remove": ["<path>"], "symlinks": [{"path", "target"}], "roles": {"enable": [], "disable": []}, "effects": ["daemon-reload", "firewall", "nginx", "journald"] }` | `WriteResult` | no |
 | `restore`  | `{ "snapshot": "<apply-id>" }`                                                         | `WriteResult`                                | no       |
 | `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }` | `UnitState`      | no       |
@@ -497,7 +497,8 @@ type JournalEntry struct {
 ```
 /var/lib/tops/                       0700 root:root
 ├── lock                             0600  Lease (absent = free)
-├── lock.flock                       0600  empty; flock(2) target serialising fenced ops and takeover
+├── lock.flock                       0600  empty; flock(2) held by a fenced op for its whole run, and by a takeover
+├── lease.flock                      0600  empty; flock(2) held while the lease is read and replaced
 ├── applied.json                     0600  Applied
 ├── history/<apply-id>.json          0600  History, newest 100
 └── snapshots/<apply-id>/            0700  newest 10
@@ -517,8 +518,8 @@ type Lease struct {
 	Command    string    `json:"command"`   // "apply", "rollback 20261023T153012Z-7f3a"
 	By         string    `json:"by"`        // "ssk@thinkpad"
 	PID        int       `json:"pid"`       // workstation pid
-	AcquiredAt time.Time `json:"acquiredAt"`
-	RenewedAt  time.Time `json:"renewedAt"`
+	AcquiredAt time.Time `json:"acquiredAt"` // set by the helper, node clock
+	RenewedAt  time.Time `json:"renewedAt"`  // set by the helper, node clock
 	TTLSeconds int       `json:"ttlSeconds"` // 120
 }
 
