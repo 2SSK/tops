@@ -19,8 +19,9 @@ const sqlPassword = "p@ss/w0rd+x"
 // fakeSQLTool is a temporal-sql-tool that behaves like 1.31.3's where schema depends on it:
 // global flags, then the command and its flags; the password only from SQL_PASSWORD; its log
 // on stderr with the level coloured even off a terminal. On the database "broken" it fails
-// update-schema as the real one fails to connect, its error quoting the password both as it is
-// and escaped in the connection URL, and exits 1. It logs its arguments, whether
+// update-schema as the real one fails to connect: the reason logged first, quoting the
+// password both as it is and escaped in the connection URL, a summary that says nothing
+// last, and exit 1. It logs its arguments, whether
 // SQL_PASSWORD was the password, and whether the helper's own environment leaked in.
 //
 //nolint:gosec // G101: the test password in a fake connection URL
@@ -41,7 +42,8 @@ while [ $# -gt 0 ]; do
 done
 printf '2026-11-22T12:00:00.000Z\t\033[34mINFO\033[0m\tUpdateSchemaTask started\n' >&2
 if [ "$db/$step" = broken/update-schema ]; then
-	printf '2026-11-22T12:00:01.000Z\t\033[31mERROR\033[0m\tUnable to connect to SQL database.\t{"error": "dial postgres://temporal:%s@db:5432/broken: password %s rejected"}\n' 'ENC' "$SQL_PASSWORD" >&2
+	printf '2026-11-22T12:00:01.000Z\t\033[31mERROR\033[0m\tsql handle: unable to refresh database connection pool\t{"error": "dial postgres://temporal:%s@db:5432/broken: password %s rejected"}\n' 'ENC' "$SQL_PASSWORD" >&2
+	printf '2026-11-22T12:00:01.000Z\t\033[31mERROR\033[0m\tUnable to update SQL schema.\t{"error": "no usable database connection found"}\n' >&2
 	exit 1
 fi
 exit 0
@@ -125,8 +127,8 @@ func TestSchemaTLS(t *testing.T) {
 }
 
 // TestSchemaFails: a step the tool fails is schema.failed naming the step and the database,
-// with the tool's error on one line, uncoloured, the password masked as it is and as the URL
-// escapes it; nothing runs after it.
+// with every error the tool logged, reason first, on one line, without time, level or colour,
+// the password masked as it is and as the URL escapes it; nothing runs after it.
 func TestSchemaFails(t *testing.T) {
 	n := newSchemaNode(t)
 	broken := wire.SchemaTarget{Database: "broken", SchemaName: "postgresql/v12/temporal"}
@@ -134,7 +136,8 @@ func TestSchemaFails(t *testing.T) {
 	want := &wire.Error{ //nolint:gosec // G101: the password masked in a fake connection URL
 		Code:    codeSchemaFailed,
 		Message: "update-schema broken failed",
-		Detail:  `2026-11-22T12:00:01.000Z ERROR Unable to connect to SQL database. {"error": "dial postgres://temporal:***@db:5432/broken: password *** rejected"}`,
+		Detail: `sql handle: unable to refresh database connection pool {"error": "dial postgres://temporal:***@db:5432/broken: password *** rejected"}; ` +
+			`Unable to update SQL schema. {"error": "no usable database connection found"}`,
 	}
 	var we *wire.Error
 	if !errors.As(err, &we) || !reflect.DeepEqual(we, want) {

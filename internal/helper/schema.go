@@ -78,12 +78,33 @@ func sqlTool(ctx context.Context, tool string, s wire.Schema, database string, s
 	var exit *exec.ExitError
 	switch {
 	case errors.As(err, &exit):
-		detail := why(ansiColor.ReplaceAllString(stderr.String(), ""), exit)
-		return &wire.Error{Code: codeSchemaFailed, Message: step[0] + " " + database + " failed", Detail: maskValue(detail, s.Password)}
+		return &wire.Error{
+			Code:    codeSchemaFailed,
+			Message: step[0] + " " + database + " failed",
+			Detail:  maskValue(toolError(stderr.String(), exit), s.Password),
+		}
 	case err != nil:
 		return fmt.Errorf("run temporal-sql-tool %s: %w", step[0], err)
 	}
 	return nil
+}
+
+// toolError is what the tool logged at ERROR, without its time, level and colors, on one
+// line: PostgreSQL's reason comes first ("sql handle: unable to refresh database connection
+// pool ... password authentication failed"), the step's summary last ("Unable to create SQL
+// database ... no usable database connection found"), which alone says nothing. Its exit
+// status when it logged no error.
+func toolError(stderr string, exit *exec.ExitError) string {
+	var errs []string
+	for line := range strings.Lines(ansiColor.ReplaceAllString(stderr, "")) {
+		if f := strings.Fields(line); len(f) > 2 && f[1] == "ERROR" {
+			errs = append(errs, strings.Join(f[2:], " "))
+		}
+	}
+	if len(errs) == 0 {
+		return exit.Error()
+	}
+	return strings.Join(errs, "; ")
 }
 
 // maskValue replaces a secret in msg with ***, also as the tool puts it in a connection URL.

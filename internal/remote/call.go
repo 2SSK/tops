@@ -25,15 +25,16 @@ func cmdHelper(sha256 string, op wire.Op) string {
 	return "sudo -n " + helperDir(sha256) + "/tops node " + string(op)
 }
 
-// How long one helper op may take (TRD "Timeouts"); stage downloads  releases.
+// How long one helper op may take (TRD "Timeouts"): stage downloads  releases, schema migrates
+// the databases.
 const (
-	opTimeout    = 60 * time.Second
-	stageTimeout = 10 * time.Minute
+	opTimeout   = 60 * time.Second
+	longTimeout = 10 * time.Minute
 )
 
 func timeout(op wire.Op) time.Duration {
-	if op == wire.OpStage {
-		return stageTimeout
+	if op == wire.OpStage || op == wire.OpSchema {
+		return longTimeout
 	}
 	return opTimeout
 }
@@ -127,4 +128,12 @@ func (n *Node) Stage(ctx context.Context, s wire.Stage) (wire.StageResult, error
 // its temporal-server in /run/tops/<run-id> and removes the directory afterwards.
 func (n *Node) Validate(ctx context.Context, v wire.Validate) (wire.ValidateResult, error) {
 	return nodeOp[wire.ValidateResult](ctx, n, wire.OpValidate, v)
+}
+
+// Schema creates the databases the spec names where missing and migrates them with the
+// staged release's temporal-sql-tool, run on the node: PostgreSQL admits the nodes, not the
+// workstation. The password travels in the request, on the helper's stdin.
+func (n *Node) Schema(ctx context.Context, s wire.Schema) error {
+	_, err := nodeOp[struct{}](ctx, n, wire.OpSchema, s)
+	return err
 }
