@@ -22,6 +22,7 @@ const (
 	OpFacts    Op = "facts"
 	OpStage    Op = "stage"
 	OpValidate Op = "validate"
+	OpSchema   Op = "schema"
 )
 
 // Request is the one JSON document a helper op reads on stdin.
@@ -170,4 +171,24 @@ type Rejection struct {
 	Role    string `json:"role"` // "" for the unit
 	File    string `json:"file"` // "config", "dynamicConfig" or "limits", as in RoleFiles, or "unit"
 	Message string `json:"message"`
+}
+
+// Schema is what the helper creates and migrates with a staged release's temporal-sql-tool:
+// each target database, on the PostgreSQL the node reaches.
+type Schema struct {
+	Release       string         `json:"release"` // a staged server release, "1.31.3"
+	Host          string         `json:"host"`
+	Port          int            `json:"port"`
+	User          string         `json:"user"`
+	Password      string         `json:"password"` // to the tool as SQL_PASSWORD, never argv
+	TLS           bool           `json:"tls"`
+	AdminDatabase string         `json:"adminDatabase"` // to the tool as SQL_PASSWORD, never argv
+	Targets       []SchemaTarget `json:"targets"`
+}
+
+// SchemaTarget is one database and the schema embedded in the tool that versions it.
+type SchemaTarget struct {
+	Database   string `json:"database"`   // "temporal"
+	SchemaName string `json:"schemaName"` // "postgresql/v12/temporal"
+	Create     bool   `json:"create"`     // the workstation found no such database
 }

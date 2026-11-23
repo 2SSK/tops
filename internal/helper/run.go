@@ -48,6 +48,7 @@ var handlers = map[wire.Op]handler{
 	wire.OpFacts:    facts,
 	wire.OpStage:    stage,
 	wire.OpValidate: validate,
+	wire.OpSchema:   schema,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -129,6 +130,17 @@ func validate(ctx context.Context, env Env, req wire.Request) (any, error) {
 		return nil, badRequest("args", err)
 	}
 	return env.Host.Validate(ctx, req.RunID, v)
+}
+
+func schema(ctx context.Context, env Env, req wire.Request) (any, error) {
+	var s wire.Schema
+	if err := decodeArgs(req.Args, &s); err != nil {
+		return nil, err
+	}
+	if err := checkSchema(s); err != nil {
+		return nil, badRequest("args", err)
+	}
+	return struct{}{}, env.Host.Schema(ctx, s)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so

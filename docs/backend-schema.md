@@ -340,9 +340,9 @@ type Event struct {
 | ---------- | -------------------------------------------------------------------------------------- | -------------------------------------------- | -------- |
 | `hello`    | `{}`                                                                                   | `Hello`                                      | no       |
 | `facts`    | `{ "want": {"<path>": "<sha256>"}, "dirs": ["/etc/temporal", …] }`                     | `Facts`                                      | no       |
-| `validate` | `{ "release": "1.31.3", "roles": [{"role", "files": [File], "env": {"K": "V"}}], "units": [File] }` | `{ "checks": [{"name", "role", "ok", "detail"}] }` | no |
+| `validate` | `Validate`                                                                             | `ValidateResult`                             | no       |
 | `stage`    | `Stage`                                                                                | `{ "changed": ["…"] }`                       | progress |
-| `schema`   | `Schema`                                                                               | `{ "databases": [{"name", "before", "after", "created"}] }` | progress |
+| `schema`   | `Schema`                                                                               | `{}`; the workstation reads `schema_version` before and after | no |
 | `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease, "takeOverStale": bool }`   | `{ "held": bool, "lease": Lease, "previous": Lease? }` | no |
 | `write`    | `{ "files": [File], "remove": ["<path>"], "symlinks": [{"path", "target"}], "roles": {"enable": [], "disable": []}, "effects": ["daemon-reload", "firewall", "nginx", "journald"] }` | `WriteResult` | no |
 | `restore`  | `{ "snapshot": "<apply-id>" }`                                                         | `WriteResult`                                | no       |
@@ -446,15 +446,23 @@ type Download struct {
 }
 
 type Schema struct {
-	Tool     string         `json:"tool"`    // "temporal-sql-tool"
-	Release  string         `json:"release"` // tool from this staged release
-	Action   string         `json:"action"`  // "ensure" (create if missing, setup 0.0, update) | "update"
-	Endpoint string         `json:"endpoint"`
-	Port     int            `json:"port"`
-	User     string         `json:"user"`
-	Password secret.Value   `json:"password"` // passed to the tool as SQL_PASSWORD, never argv
-	TLS      bool           `json:"tls"`
-	Targets  []SchemaTarget `json:"targets"` // [{database: temporal, schemaName: postgresql/v12/temporal}, …]
+	Release       string         `json:"release"`       // its temporal-sql-tool runs: releases/<v>/temporal-sql-tool
+	Host          string         `json:"host"`
+	Port          int            `json:"port"`
+	User          string         `json:"user"`
+	Password      string         `json:"password"`      // to the tool as SQL_PASSWORD, never argv
+	TLS           bool           `json:"tls"`
+	AdminDatabase string         `json:"adminDatabase"` // create-database connects here (--defaultdb)
+	Targets       []SchemaTarget `json:"targets"`
+}
+
+// Per target: create-database if Create (the workstation found it missing in pg_database:
+// the tool needs CREATEDB even for a database that exists), setup-schema --version 0.0
+// (skipped past 0.0), update-schema --schema-name <name> (nothing to apply when current).
+type SchemaTarget struct {
+	Database   string `json:"database"`   // "temporal"
+	SchemaName string `json:"schemaName"` // "postgresql/v12/temporal"
+	Create     bool   `json:"create"`
 }
 
 type JournalEntry struct {
