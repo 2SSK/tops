@@ -382,7 +382,7 @@ type Detected struct {
 
 type File struct {
 	Path    string `json:"path"`
-	Content string `json:"content"` // base64 for binary; secrets travel only here
+	Content []byte `json:"content"` // base64 in JSON; secrets travel only here
 	Mode    string `json:"mode"`    // "0640"
 	Owner   string `json:"owner"`
 	Group   string `json:"group"`

@@ -90,7 +90,7 @@ func checkStage(s wire.Stage) error {
 
 // stageUser creates the temporal system user with its home, 0750, when it does not exist.
 func (h Host) stageUser(ctx context.Context, r *wire.StageResult) error {
-	users, err := readIDs(filepath.Join(h.Etc, "passwd"))
+	users, _, err := readIDs(filepath.Join(h.Etc, "passwd"))
 	if err != nil {
 		return err
 	}

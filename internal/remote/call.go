@@ -135,3 +135,9 @@ func (n *Node) Schema(ctx context.Context, s wire.Schema) error {
 func (n *Node) Lock(ctx context.Context, l wire.Lock) (wire.LockResult, error) {
 	return nodeOp[wire.LockResult](ctx, n, wire.OpLock, l)
 }
+
+// Write puts files in place on the node and removes others, after the helper saved what was
+// there in the apply's snapshot. The contents, secrets among them, travel on stdin.
+func (n *Node) Write(ctx context.Context, w wire.Write) (wire.WriteResult, error) {
+	return nodeOp[wire.WriteResult](ctx, n, wire.OpWrite, w)
+}

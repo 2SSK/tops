@@ -24,6 +24,7 @@ const (
 	OpValidate Op = "validate"
 	OpSchema   Op = "schema"
 	OpLock     Op = "lock"
+	OpWrite    Op = "write"
 )
 
 // Timeout is how long one op may take (TRD "Timeouts"): stage downloads releases, and schema
@@ -237,4 +238,28 @@ type LockResult struct {
 	Lease    *Lease    `json:"lease"`    // the node's lease now; nil when free
 	Previous *Lease    `json:"previous"` // the stale lease acquire took over
 	Now      time.Time `json:"now"`      // the node's clock as it answered: the lease's ages are against it
+}
+
+// File is one file write puts in place, whole.
+type File struct {
+	Path    string `json:"path"`
+	Content []byte `json:"content"` // base64 in JSON; secrets travel only here
+	Mode    string `json:"mode"`    // "0640"
+	Owner   string `json:"owner"`
+	Group   string `json:"group"`
+}
+
+// Write asks the helper to put files in place and remove others, after it saved what was
+// there in the apply's snapshot.
+type Write struct {
+	Files  []File   `json:"files"`
+	Remove []string `json:"remove"`
+}
+
+// WriteResult is what write changed: the paths, and the apply id the old state was saved
+// under, "" when nothing needed a change.
+type WriteResult struct {
+	Snapshot string   `json:"snapshot"`
+	Written  []string `json:"written"`
+	Removed  []string `json:"removed"`
 }

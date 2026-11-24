@@ -166,9 +166,10 @@ func (h Host) applied() (*wire.Applied, error) {
 	return &a, nil
 }
 
-// names maps user and group ids to names, from /etc/passwd and /etc/group.
+// names maps user and group ids to names and back, from /etc/passwd and /etc/group.
 type names struct {
 	users, groups map[uint32]string
+	uids, gids    map[string]uint32 // two names may share an id: each keeps its own
 }
 
 func (n names) user(id uint32) string  { return nameOr(n.users, id) }
@@ -183,32 +184,33 @@ func nameOr(m map[uint32]string, id uint32) string {
 }
 
 func (h Host) names() (names, error) {
-	users, err := readIDs(filepath.Join(h.Etc, "passwd"))
+	users, uids, err := readIDs(filepath.Join(h.Etc, "passwd"))
 	if err != nil {
 		return names{}, err
 	}
-	groups, err := readIDs(filepath.Join(h.Etc, "group"))
+	groups, gids, err := readIDs(filepath.Join(h.Etc, "group"))
 	if err != nil {
 		return names{}, err
 	}
-	return names{users: users, groups: groups}, nil
+	return names{users: users, groups: groups, uids: uids, gids: gids}, nil
 }
 
-// readIDs reads "name:x:id:..." lines, the format of both /etc/passwd and /etc/group.
-func readIDs(file string) (map[uint32]string, error) {
+// readIDs reads "name:x:id:..." lines, the format of both /etc/passwd and  /etc/group: each
+// id's name, and each name's id.
+func readIDs(file string) (map[uint32]string, map[string]uint32, error) {
 	b, err := os.ReadFile(filepath.Clean(file))
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", filepath.Base(file), err)
+		return nil, nil, fmt.Errorf("read %s: %w", filepath.Base(file), err)
 	}
-	ids := map[uint32]string{}
+	byID, byName := map[uint32]string{}, map[string]uint32{}
 	for line := range bytes.Lines(b) {
 		f := strings.Split(strings.TrimSpace(string(line)), ":")
 		if len(f) < 3 {
 			continue
 		}
 		if id, err := strconv.ParseUint(f[2], 10, 32); err == nil {
-			ids[uint32(id)] = f[0]
+			byID[uint32(id)], byName[f[0]] = f[0], uint32(id)
 		}
 	}
-	return ids, nil
+	return byID, byName, nil
 }

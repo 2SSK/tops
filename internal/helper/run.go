@@ -50,6 +50,7 @@ var handlers = map[wire.Op]handler{
 	wire.OpValidate: validate,
 	wire.OpSchema:   schema,
 	wire.OpLock:     lock,
+	wire.OpWrite:    writeFiles,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -167,6 +168,22 @@ func lock(ctx context.Context, env Env, req wire.Request) (any, error) {
 		return nil, badRequest("args", err)
 	}
 	return env.Host.Lock(ctx, l)
+}
+
+func writeFiles(ctx context.Context, env Env, req wire.Request) (any, error) {
+	var w wire.Write
+	if err := decodeArgs(req.Args, &w); err != nil {
+		return nil, err
+	}
+	if err := checkWrite(req.ApplyID, w); err != nil {
+		return nil, badRequest("args", err)
+	}
+	unlock, err := env.Host.Fence(ctx, req.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return env.Host.Write(req.ApplyID, w)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so
