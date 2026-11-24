@@ -50,18 +50,10 @@ func TestNodeStageChecksum(t *testing.T) {
 	}
 }
 
-// TestTimeout: every op gets the TRD's 60 s, except stage, which downloads releases, and
-// schema, which migrates the databases.
+// TestTimeout: the workstation waits a little longer than the helper lets an op run, so a
+// helper out of time still answers.
 func TestTimeout(t *testing.T) {
-	for op, want := range map[wire.Op]time.Duration{
-		wire.OpHello:    time.Minute,
-		wire.OpFacts:    time.Minute,
-		wire.OpValidate: time.Minute,
-		wire.OpStage:    10 * time.Minute,
-		wire.OpSchema:   10 * time.Minute,
-	} {
-		if got := timeout(op); got != want {
-			t.Errorf("timeout(%s) = %v, want %v", op, got, want)
-		}
+	if got := timeout(wire.OpStage); got != 10*time.Minute+15*time.Second {
+		t.Errorf("timeout(stage) = %v, want the helper's 10 min and 15 s", got)
 	}
 }

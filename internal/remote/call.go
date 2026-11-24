@@ -25,19 +25,11 @@ func cmdHelper(sha256 string, op wire.Op) string {
 	return "sudo -n " + helperDir(sha256) + "/tops node " + string(op)
 }
 
-// How long one helper op may take (TRD "Timeouts"): stage downloads  releases, schema migrates
-// the databases.
-const (
-	opTimeout   = 60 * time.Second
-	longTimeout = 10 * time.Minute
-)
+// replyMargin is how much longer the workstation waits for a helper op than the helper lets
+// it run: a helper that runs out of time still answers why.
+const replyMargin = 15 * time.Second
 
-func timeout(op wire.Op) time.Duration {
-	if op == wire.OpStage || op == wire.OpSchema {
-		return longTimeout
-	}
-	return opTimeout
-}
+func timeout(op wire.Op) time.Duration { return wire.Timeout(op) + replyMargin }
 
 // errNoHelper: the node has no helper at that path yet; upload it.
 var errNoHelper = errors.New("the helper is not installed")

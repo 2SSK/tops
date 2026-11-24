@@ -68,6 +68,9 @@ func Run(ctx context.Context, op wire.Op, env Env) int {
 		return env.reply(op, req.RunID, nil, badRequest("op", fmt.Errorf("unknown op %q", op)))
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, wire.Timeout(op))
+	defer cancel()
+
 	result, err := handle(ctx, env, req)
 	if err != nil {
 		var we *wire.Error

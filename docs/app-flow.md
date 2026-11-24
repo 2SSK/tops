@@ -66,6 +66,7 @@ PostgreSQL `vps-pg` 10.80.0.20. Output skeletons use `<…>` for values; full re
 | -------------------------------- | ------------------------ | ---- |
 | Another live run holds the lease | `lock.held` (holder, command, age, renewed) | 3 |
 | Stale lease                      | warning, takeover, interrupted apply id printed | - |
+| The previous run's last op still writes | `lock.busy` (that run)    | 3 |
 | No TTY and no `-y`; `--json` without `-y` | `refused.no_tty` | 3    |
 | Operator answers no              | nothing changed, `result: refused` | 3 |
 | Lease lost mid-run               | `lock.lost` (from the helper)      | 1 |

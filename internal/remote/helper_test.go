@@ -267,8 +267,13 @@ func TestHelperParallelUploads(t *testing.T) {
 // its first fenced op. Its TTL outlasts any test, so nothing needs to renew it.
 func holdLease(t *testing.T, n *Node) {
 	t.Helper()
-	r, err := n.Lock(t.Context(), wire.Lock{Action: wire.LockAcquire, Lease: wire.Lease{Env: "helper-test", Command: "test", By: n.req.By, TTLSeconds: 3600}})
-	if err != nil || !r.Held {
+	if r, err := acquire(t, n, 3600); err != nil || !r.Held {
 		t.Fatalf("acquire = %+v, %v", r, err)
 	}
+}
+
+// acquire asks for the node's lease for the node's run, for ttl seconds.
+func acquire(t *testing.T, n *Node, ttl int) (wire.LockResult, error) {
+	t.Helper()
+	return n.Lock(t.Context(), wire.Lock{Action: wire.LockAcquire, Lease: wire.Lease{Env: "helper-test", Command: "test", By: n.req.By, TTLSeconds: ttl}})
 }

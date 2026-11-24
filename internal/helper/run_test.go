@@ -2,6 +2,7 @@ package helper
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/2SSK/tops/internal/wire"
 )
@@ -150,5 +152,24 @@ func TestRunHelloWithoutBinary(t *testing.T) {
 	code, resp, _ := run(t, env, wire.OpHello, `{"runId":"r-1"}`)
 	if code != ExitNotOK || resp.Error == nil || !strings.Contains(resp.Error.Message, "hash own binary") {
 		t.Errorf("exit %d, response %+v", code, resp.Error)
+	}
+}
+
+// TestRunDeadline: the helper bounds every op by the time the workstation gives it, so a
+// fenced op cannot hold the fence for ever, even if the workstation is gone.
+func TestRunDeadline(t *testing.T) {
+	for _, op := range []wire.Op{wire.OpLock, wire.OpStage} {
+		left := make(chan time.Duration, 1)
+		saved := handlers[op]
+		handlers[op] = func(ctx context.Context, _ Env, _ wire.Request) (any, error) {
+			d, _ := ctx.Deadline()
+			left <- time.Until(d)
+			return struct{}{}, nil
+		}
+		run(t, Env{Root: true}, op, `{"runId":"r-1"}`)
+		handlers[op] = saved
+		if got, want := <-left, wire.Timeout(op); got > want || got < want-time.Second {
+			t.Errorf("%s: %v left, want %v", op, got, want)
+		}
 	}
 }

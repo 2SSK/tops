@@ -26,6 +26,15 @@ const (
 	OpLock     Op = "lock"
 )
 
+// Timeout is how long one op may take (TRD "Timeouts"): stage downloads releases, and schema
+// migrates the databases. The helper ends its op then, and with it any fence the op holds
+func Timeout(op Op) time.Duration {
+	if op == OpStage || op == OpSchema {
+		return 10 * time.Minute
+	}
+	return time.Minute
+}
+
 // Request is the one JSON document a helper op reads on stdin.
 type Request struct {
 	RunID   string          `json:"runId"`             // "r-20261023T153012Z-9c1e"

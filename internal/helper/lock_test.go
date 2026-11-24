@@ -224,19 +224,45 @@ func TestLockDuringFencedOp(t *testing.T) {
 	}
 }
 
-// TestLockTakeOverCanceled: a takeover still waiting when the run's context ends changes nothing.
-func TestLockTakeOverCanceled(t *testing.T) {
-	n := newLockNode(t)
-	n.lock(t, wire.LockAcquire, "r-a-0001")
-	n.now = t0.Add(200 * time.Second)
-	n.holdFence(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-	defer cancel()
-	if _, err := n.host.Lock(ctx, wire.Lock{Action: wire.LockAcquire, Lease: lease("r-b-0002")}); !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("err = %v, want the deadline", err)
+// TestLockAcquireBusy: an acquire still waiting for the fence when its op's time runs out is
+// lock.busy, naming the run still writing, and changes nothing.
+func TestLockAcquireBusy(t *testing.T) {
+	for name, c := range map[string]struct {
+		gone func(n *lockNode)
+		who  string
+	}{
+		"stale":    {func(n *lockNode) { n.now = t0.Add(200 * time.Second) }, "run r-a-0001 (apply by ssk@thinkpad)"},
+		"released": {func(n *lockNode) { n.lock(t, wire.LockRelease, "r-a-0001") }, "the run that released it"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			n := newLockNode(t)
+			n.lock(t, wire.LockAcquire, "r-a-0001")
+			n.holdFence(t)
+			c.gone(n)
+			before := n.onDisk(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+			defer cancel()
+			_, err := n.host.Lock(ctx, wire.Lock{Action: wire.LockAcquire, Lease: lease("r-b-0002")})
+			var we *wire.Error
+			if !errors.As(err, &we) || we.Code != codeLockBusy || we.Detail != c.who+" is still writing; try again when its op ends" {
+				t.Errorf("err = %v, want lock.busy naming %s", err, c.who)
+			}
+			if got := n.onDisk(t); !reflect.DeepEqual(got, before) {
+				t.Errorf("lease file %+v, want %+v", got, before)
+			}
+		})
 	}
-	if got := n.onDisk(t); got.RunID != "r-a-0001" {
-		t.Errorf("lease file %+v, want a's", got)
+}
+
+// TestLockAcquireCanceled: an acquire canceled while it waits, by a signal rather than its
+// deadline, is that error, not lock.busy.
+func TestLockAcquireCanceled(t *testing.T) {
+	n := newLockNode(t)
+	n.holdFence(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	if _, err := n.host.Lock(ctx, wire.Lock{Action: wire.LockAcquire, Lease: lease("r-b-0002")}); !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want canceled", err)
 	}
 }
 

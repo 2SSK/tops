@@ -28,7 +28,8 @@ const (
 )
 
 // Lock acquires, renews or releases the node's lease for one run.
-//   - acquire: takes a free lease, renews the run's own, refuses another run's live one, and
+//   - acquire: renews the run's own live lease and refuses another run's; it takes a free or
+//     stale one only under fenceFlock, after a fenced op still running, if any, has ended;
 //
 // takes over a stale one after its run's fenced op, if any, has ended;
 //   - renew: extends the run's own live lease; one that expired or was taken over is lost;
@@ -40,7 +41,7 @@ func (h Host) Lock(ctx context.Context, l wire.Lock) (wire.LockResult, error) {
 	}
 	unlock, err := h.flock(ctx, fenceFlock)
 	if err != nil {
-		return wire.LockResult{}, err
+		return wire.LockResult{}, lockBusy(r.Lease, err)
 	}
 	defer unlock()
 	r, _, err = h.lockStep(ctx, l, true) // decided again: the lease may have changed meanwhile
@@ -103,7 +104,7 @@ func (h Host) acquire(l wire.Lease, s leaseState, fenced bool) (wire.LockResult,
 	case s.live:
 		return wire.LockResult{Lease: s.cur}, false, nil
 	case !fenced:
-		return wire.LockResult{}, true, nil
+		return wire.LockResult{Lease: s.cur}, true, nil
 	}
 	l.AcquiredAt, l.RenewedAt = s.now, s.now
 	return wire.LockResult{Held: true, Lease: &l, Previous: s.cur}, false, h.writeLease(&l)
@@ -219,6 +220,24 @@ func (h Host) holds(cur *wire.Lease, runID string) error {
 		return nil
 	}
 	return &wire.Error{Code: codeLockLost, Message: "this run does not hold the lock", Detail: why}
+}
+
+const codeLockBusy = "lock.busy"
+
+// lockBusy is acquire giving up on the fence when the op's time ran out: a fenced op of the
+// run that released or let its lease expire, prev, is still running.
+func lockBusy(prev *wire.Lease, err error) error {
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	who := "the run that released it"
+	if prev != nil {
+		who = fmt.Sprintf("run %s (%s by %s)", prev.RunID, prev.Command, prev.By)
+	}
+	return &wire.Error{
+		Code:    codeLockBusy,
+		Message: "a write is still in progress on this node",
+		Detail:  who + " is still writing; try again when its op ends"}
 }
 
 // checkLock refuses an action the helper does not know, a run id that is not one, and a lease
