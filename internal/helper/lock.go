@@ -63,10 +63,17 @@ func (h Host) lockStep(ctx context.Context, l wire.Lock, fenced bool) (wire.Lock
 	s := leaseState{cur: cur, now: h.Now()}
 	s.mine = cur != nil && cur.RunID == l.Lease.RunID
 	s.live = cur != nil && s.now.Before(expiry(cur))
+	r, fence, err := h.act(l, s, fenced)
+	r.Now = s.now
+	return r, fence, err
+}
+
+// act runs the action on the lease as s found it.
+func (h Host) act(l wire.Lock, s leaseState, fenced bool) (wire.LockResult, bool, error) {
 	switch l.Action {
 	case wire.LockRelease:
 		if !s.mine {
-			return wire.LockResult{Lease: cur}, false, nil // never another run's
+			return wire.LockResult{Lease: s.cur}, false, nil // never another run's
 		}
 		return wire.LockResult{}, false, h.removeLease()
 	case wire.LockRenew:

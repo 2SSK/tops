@@ -343,7 +343,7 @@ type Event struct {
 | `validate` | `Validate`                                                                             | `ValidateResult`                             | no       |
 | `stage`    | `Stage`                                                                                | `{ "changed": ["…"] }`                       | progress |
 | `schema`   | `Schema`                                                                               | `{}`; the workstation reads `schema_version` before and after | no |
-| `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease }`; run and apply id from the request | `{ "held": bool, "lease": Lease?, "previous": Lease? }` | no |
+| `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease }`; run and apply id from the request | `{ "held": bool, "lease": Lease?, "previous": Lease?, "now": time }` (`now`: the node's clock) | no |
 | `write`    | `{ "files": [File], "remove": ["<path>"], "symlinks": [{"path", "target"}], "roles": {"enable": [], "disable": []}, "effects": ["daemon-reload", "firewall", "nginx", "journald"] }` | `WriteResult` | no |
 | `restore`  | `{ "snapshot": "<apply-id>" }`                                                         | `WriteResult`                                | no       |
 | `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }` | `UnitState`      | no       |

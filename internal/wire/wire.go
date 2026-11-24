@@ -233,7 +233,8 @@ type Lock struct {
 
 // LockResult says whether the run holds the lease after the action, and whose it is.
 type LockResult struct {
-	Held     bool   `json:"held"`
-	Lease    *Lease `json:"lease"`    // the node's lease now; nil when free
-	Previous *Lease `json:"previous"` // the stale lease acquire took over
+	Held     bool      `json:"held"`
+	Lease    *Lease    `json:"lease"`    // the node's lease now; nil when free
+	Previous *Lease    `json:"previous"` // the stale lease acquire took over
+	Now      time.Time `json:"now"`      // the node's clock as it answered: the lease's ages are against it
 }

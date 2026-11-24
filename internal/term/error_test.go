@@ -27,6 +27,8 @@ func TestExitCode(t *testing.T) {
 		{"reported differences", &Reported{Err: &UserError{Code: "pending.differences"}}, 2},
 		{"safety refusal", &UserError{Code: "refused.ring_incomplete"}, 3},
 		{"lock held", &UserError{Code: "lock.held"}, 3},
+		{"lock busy", &UserError{Code: "lock.busy"}, 3},
+		{"lock lost", &UserError{Code: "lock.lost"}, 1},
 		{"invalid spec", &UserError{Code: "spec.invalid"}, 4},
 		{"bad secrets", &UserError{Code: "secrets.mode"}, 4},
 		{"bad usage", &UserError{Code: "usage.invalid"}, 4},

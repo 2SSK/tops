@@ -40,7 +40,7 @@ func ExitCode(err error) int {
 	switch {
 	case strings.HasPrefix(ue.Code, "pending."):
 		return 2
-	case strings.HasPrefix(ue.Code, "refused."), ue.Code == "lock.held":
+	case strings.HasPrefix(ue.Code, "refused."), ue.Code == "lock.held", ue.Code == "lock.busy":
 		return 3
 	case strings.HasPrefix(ue.Code, "spec."),
 		strings.HasPrefix(ue.Code, "secrets."),

@@ -106,8 +106,8 @@ func TestLockAcquireHeld(t *testing.T) {
 	n.lock(t, wire.LockAcquire, "r-a-0001")
 	n.now = t0.Add(119 * time.Second)
 	r := n.lock(t, wire.LockAcquire, "r-b-0002")
-	if want := held("r-a-0001", t0, t0); r.Held || !reflect.DeepEqual(r.Lease, want) {
-		t.Errorf("acquire = %+v, want refused with %+v", r, want)
+	if want := held("r-a-0001", t0, t0); r.Held || !reflect.DeepEqual(r.Lease, want) || !r.Now.Equal(n.now) {
+		t.Errorf("acquire = %+v, want refused with %+v at the node's time", r, want)
 	}
 	if got := n.onDisk(t); got.RunID != "r-a-0001" || !got.RenewedAt.Equal(t0) {
 		t.Errorf("lease file %+v, want a's untouched", got)
