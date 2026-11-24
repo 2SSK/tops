@@ -137,3 +137,9 @@ func (n *Node) Schema(ctx context.Context, s wire.Schema) error {
 	_, err := nodeOp[struct{}](ctx, n, wire.OpSchema, s)
 	return err
 }
+
+// Lock acquires, renews or releases the node's lease. The helper names the lease after the
+// request's run, so every later fenced op of the run is checked against it.
+func (n *Node) Lock(ctx context.Context, l wire.Lock) (wire.LockResult, error) {
+	return nodeOp[wire.LockResult](ctx, n, wire.OpLock, l)
+}

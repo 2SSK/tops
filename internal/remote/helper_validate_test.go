@@ -98,6 +98,7 @@ func stagedNode(t *testing.T) (*container, *Node) {
 	}
 	base := serveOnNode(t, n, &releaseServer{files: map[string][]byte{"/" + path.Base(d.URL): archive}})
 	d.URL = base + "/" + path.Base(d.URL)
+	holdLease(t, n)
 	if _, err := n.Stage(t.Context(), wire.Stage{User: true, Releases: []wire.Download{d}}); err != nil {
 		t.Fatal(err)
 	}

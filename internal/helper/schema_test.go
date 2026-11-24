@@ -221,10 +221,11 @@ func TestSchemaRefusesUnsafeArgs(t *testing.T) {
 	}
 }
 
-// TestRunSchema: through the op, an empty result, and a failure's response and log line
+// TestRunSchema: through the op, for the run that holds the lease, an empty result, and a failure's response and log line
 // without the password.
 func TestRunSchema(t *testing.T) {
 	n := newSchemaNode(t)
+	leased(t, &n.host, "r-1")
 	code, resp, _ := run(t, Env{Host: n.host, Root: true}, wire.OpSchema, schemaRequest(t, schemaArgs(temporalDB, visibilityDB)))
 	if code != ExitOK || string(resp.Result) != "{}" {
 		t.Errorf("exit %d, result %s", code, resp.Result)

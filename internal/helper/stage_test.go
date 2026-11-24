@@ -273,6 +273,7 @@ func TestStageRefusesBadArchives(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			n := newStageNode(t)
+			leased(t, &n.host, "r-1")
 			d := n.server(t, "1.31.3")
 			tt.bad(n, &d)
 			code, resp, _ := run(t, Env{Host: n.host, Root: true}, wire.OpStage, request(t, wire.Stage{Releases: []wire.Download{d}}))
@@ -323,9 +324,10 @@ func TestStageRefusesUnsafeArgs(t *testing.T) {
 	}
 }
 
-// TestRunStage: the op through Run, with the result on stdout.
+// TestRunStage: the op through Run, for the run that holds the lease, with the result on stdout.
 func TestRunStage(t *testing.T) {
 	n := newStageNode(t)
+	leased(t, &n.host, "r-1")
 	code, resp, _ := run(t, Env{Host: n.host, Root: true}, wire.OpStage, request(t, wire.Stage{User: true}))
 	var r wire.StageResult
 	if code != ExitOK || json.Unmarshal(resp.Result, &r) != nil || !reflect.DeepEqual(r.Changed, []string{"user temporal"}) {

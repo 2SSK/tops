@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,8 +31,20 @@ func newLockNode(t *testing.T) *lockNode {
 
 // lease is what the workstation sends for a run: who and what, not the times.
 func lease(runID string) wire.Lease {
-	return wire.Lease{Env: "lab", Cluster: "tops-e2e", RunID: runID, ApplyID: "20261123T120000Z-" + runID[len(runID)-4:],
+	return wire.Lease{Env: "lab", Cluster: "tops-e2e", RunID: runID, ApplyID: "20261123T120000Z-9c1e",
 		Command: "apply", By: "ssk@thinkpad", PID: 4242, TTLSeconds: 120}
+}
+
+// leased gives the node's lease to a run, as its acquire before the first fenced op does. A
+// node without a clock gets the real one.
+func leased(t *testing.T, h *Host, runID string) {
+	t.Helper()
+	if h.Now == nil {
+		h.Now = time.Now
+	}
+	if r, err := h.Lock(t.Context(), wire.Lock{Action: wire.LockAcquire, Lease: lease(runID)}); err != nil || !r.Held {
+		t.Fatalf("acquire %s = %+v, %v", runID, r, err)
+	}
 }
 
 func (n *lockNode) lock(t *testing.T, action, runID string) wire.LockResult {
@@ -146,31 +159,39 @@ func TestLockTakeOverStale(t *testing.T) {
 	}
 }
 
-// TestLockTakeOverWaitsForFencedOp: a takeover waits while the stale run's fenced op holds
-// the fence, so it cannot interleave with a write in progress; then it takes the lease.
-func TestLockTakeOverWaitsForFencedOp(t *testing.T) {
-	n := newLockNode(t)
-	n.lock(t, wire.LockAcquire, "r-a-0001")
-	n.now = t0.Add(200 * time.Second)
-	release := n.holdFence(t)
-	done := make(chan wire.LockResult)
-	go func() {
-		r, _ := n.host.Lock(context.Background(), wire.Lock{Action: wire.LockAcquire, Lease: lease("r-b-0002")})
-		done <- r
-	}()
-	select {
-	case r := <-done:
-		t.Fatalf("took over during a fenced op: %+v", r)
-	case <-time.After(300 * time.Millisecond):
-	}
-	release()
-	select {
-	case r := <-done:
-		if !r.Held || r.Lease.RunID != "r-b-0002" {
-			t.Errorf("after the op, acquire = %+v", r)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the takeover never finished")
+// TestLockAcquireWaitsForFencedOp: a run whose lease went stale, or that released it, may
+// still be writing. The next run's acquire waits while that fenced op holds the fence, so it
+// cannot interleave with a write in progress; then it takes the lease.
+func TestLockAcquireWaitsForFencedOp(t *testing.T) {
+	for name, gone := range map[string]func(n *lockNode){
+		"stale":    func(n *lockNode) { n.now = t0.Add(200 * time.Second) },
+		"released": func(n *lockNode) { n.lock(t, wire.LockRelease, "r-a-0001") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			n := newLockNode(t)
+			n.lock(t, wire.LockAcquire, "r-a-0001")
+			release := n.holdFence(t)
+			gone(n)
+			done := make(chan wire.LockResult)
+			go func() {
+				r, _ := n.host.Lock(context.Background(), wire.Lock{Action: wire.LockAcquire, Lease: lease("r-b-0002")})
+				done <- r
+			}()
+			select {
+			case r := <-done:
+				t.Fatalf("took the lease during a fenced op: %+v", r)
+			case <-time.After(300 * time.Millisecond):
+			}
+			release()
+			select {
+			case r := <-done:
+				if !r.Held || r.Lease.RunID != "r-b-0002" {
+					t.Errorf("after the op, acquire = %+v", r)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the acquire never finished")
+			}
+		})
 	}
 }
 
@@ -292,5 +313,95 @@ func TestLockRefusesBadArgs(t *testing.T) {
 				t.Error("/var/lib/tops was created")
 			}
 		})
+	}
+}
+
+// fenceLost is the lock.lost a fenced op of the run gets on n now, or nil.
+func fenceLost(t *testing.T, h Host, runID string) *wire.Error {
+	t.Helper()
+	unlock, err := h.Fence(t.Context(), runID)
+	if err == nil {
+		unlock()
+		return nil
+	}
+	var we *wire.Error
+	if !errors.As(err, &we) || we.Code != codeLockLost {
+		t.Fatalf("fence = %v, want lock.lost", err)
+	}
+	return we
+}
+
+// TestFence: a fenced op runs only for the run whose lease is the node's and live; lock.lost
+// says why not. A run that was taken over is told who holds the node now.
+func TestFence(t *testing.T) {
+	n := newLockNode(t)
+	for _, step := range []struct {
+		name, holder string // before the check, holder acquires; "" leaves the lease alone
+		after        time.Duration
+		why          string // lock.lost's detail for r-a-0001; "" when it may write
+	}{
+		{"free node", "", 0, "no run holds it"},
+		{"holder", "r-a-0001", 0, ""},
+		{"expired", "", 150 * time.Second, "its lease expired 30s ago"},
+		{"taken over", "r-b-0002", 150 * time.Second, "run r-b-0002 holds it: apply by ssk@thinkpad"},
+	} {
+		n.now = t0.Add(step.after)
+		if step.holder != "" {
+			n.lock(t, wire.LockAcquire, step.holder)
+		}
+		we := fenceLost(t, n.host, "r-a-0001")
+		switch {
+		case step.why == "" && we != nil:
+			t.Errorf("%s: %+v, want the op to run", step.name, we)
+		case step.why != "" && (we == nil || we.Detail != step.why || we.Message != "this run does not hold the lock"):
+			t.Errorf("%s: %+v, want lock.lost: %s", step.name, we, step.why)
+		}
+	}
+}
+
+// TestFenceHolds: the fence is held from the check until the op calls unlock, and a fenced op
+// waits for another one, until its context ends. A refused op holds nothing.
+func TestFenceHolds(t *testing.T) {
+	n := newLockNode(t)
+	n.lock(t, wire.LockAcquire, "r-a-0001")
+	unlock, err := n.host.Fence(t.Context(), "r-a-0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := n.host.Fence(ctx, "r-a-0001"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a second fenced op = %v, want it to wait until the deadline", err)
+	}
+	unlock()
+	if we := fenceLost(t, n.host, "r-b-0002"); we == nil {
+		t.Error("another run's op ran")
+	}
+	if we := fenceLost(t, n.host, "r-a-0001"); we != nil {
+		t.Errorf("after the op and a refused one: %+v", we)
+	}
+}
+
+// TestRunFenced: stage and schema check the lease first: without it they do nothing and say
+// lock.lost.
+func TestRunFenced(t *testing.T) {
+	sn := newStageNode(t)
+	sn.host.Now = func() time.Time { return t0 }
+	code, resp, _ := run(t, Env{Host: sn.host, Root: true}, wire.OpStage, request(t, wire.Stage{User: true}))
+	if code != ExitNotOK || resp.Error == nil || resp.Error.Code != codeLockLost {
+		t.Errorf("stage: exit %d, error %+v, want lock.lost", code, resp.Error)
+	}
+	if b, _ := os.ReadFile(filepath.Join(sn.host.Etc, "passwd")); strings.Contains(string(b), "temporal") {
+		t.Error("stage created the user without the lease")
+	}
+
+	n := newSchemaNode(t)
+	leased(t, &n.host, "r-other-0002")
+	code, resp, _ = run(t, Env{Host: n.host, Root: true}, wire.OpSchema, schemaRequest(t, schemaArgs(temporalDB)))
+	if code != ExitNotOK || resp.Error == nil || resp.Error.Code != codeLockLost {
+		t.Errorf("schema: exit %d, error %+v, want lock.lost", code, resp.Error)
+	}
+	if ran := n.ran(t); ran != nil {
+		t.Errorf("schema ran %q without the lease", ran)
 	}
 }

@@ -137,9 +137,15 @@ var req = wire.Request{RunID: "r-helper-test", By: "make@helper-test"}
 // connect connects to the node, retrying while systemd is still starting sshd.
 func (c *container) connect(t *testing.T, d *Dialer) (*Node, error) {
 	t.Helper()
+	return c.connectAs(t, d, req)
+}
+
+// connectAs connects as another run would, with its own request.
+func (c *container) connectAs(t *testing.T, d *Dialer, r wire.Request) (*Node, error) {
+	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		n, err := d.Connect(t.Context(), "vps-01", "127.0.0.1", req)
+		n, err := d.Connect(t.Context(), "vps-01", "127.0.0.1", r)
 		var ue *term.UserError
 		if errors.As(err, &ue) && ue.Code == "ssh.unreachable" && time.Now().Before(deadline) {
 			time.Sleep(200 * time.Millisecond)
@@ -254,5 +260,15 @@ func TestHelperParallelUploads(t *testing.T) {
 				t.Errorf("round %d, connect %d: %v", round, i, err)
 			}
 		}
+	}
+}
+
+// holdLease takes the node's lease for the node's run, as every mutating command does before
+// its first fenced op. Its TTL outlasts any test, so nothing needs to renew it.
+func holdLease(t *testing.T, n *Node) {
+	t.Helper()
+	r, err := n.Lock(t.Context(), wire.Lock{Action: wire.LockAcquire, Lease: wire.Lease{Env: "helper-test", Command: "test", By: n.req.By, TTLSeconds: 3600}})
+	if err != nil || !r.Held {
+		t.Fatalf("acquire = %+v, %v", r, err)
 	}
 }

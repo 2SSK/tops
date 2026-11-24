@@ -108,6 +108,7 @@ func TestHelperStage(t *testing.T) {
 		{Kind: "cli", Version: "1.10.0", URL: base + "/cli.tar.gz", SHA256: hexSum(cli), Extract: []string{"temporal"}},
 	}}
 
+	holdLease(t, n)
 	r, err := n.Stage(t.Context(), s)
 	if err != nil {
 		t.Fatal(err)

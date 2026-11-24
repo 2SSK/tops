@@ -497,7 +497,7 @@ type JournalEntry struct {
 ```
 /var/lib/tops/                       0700 root:root
 ├── lock                             0600  Lease (absent = free)
-├── lock.flock                       0600  empty; flock(2) held by a fenced op for its whole run, and by a takeover
+├── lock.flock                       0600  empty; flock(2) held by a fenced op for its whole run, and by acquire of a free or stale lease
 ├── lease.flock                      0600  empty; flock(2) held while the lease is read and replaced
 ├── applied.json                     0600  Applied
 ├── history/<apply-id>.json          0600  History, newest 100

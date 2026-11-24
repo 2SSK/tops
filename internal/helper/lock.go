@@ -34,11 +34,8 @@ const (
 //   - renew: extends the run's own live lease; one that expired or was taken over is lost;
 //   - release: removes the run's own lease and never another's.
 func (h Host) Lock(ctx context.Context, l wire.Lock) (wire.LockResult, error) {
-	if err := os.MkdirAll(filepath.Join(h.Root, stateDir), 0o700); err != nil {
-		return wire.LockResult{}, fmt.Errorf("create %s: %w", stateDir, err)
-	}
-	r, takeOver, err := h.lockStep(ctx, l, false)
-	if err != nil || !takeOver {
+	r, fence, err := h.lockStep(ctx, l, false)
+	if err != nil || !fence {
 		return r, err
 	}
 	unlock, err := h.flock(ctx, fenceFlock)
@@ -46,12 +43,12 @@ func (h Host) Lock(ctx context.Context, l wire.Lock) (wire.LockResult, error) {
 		return wire.LockResult{}, err
 	}
 	defer unlock()
-	r, _, err = h.lockStep(ctx, l, true) // decided again: the stale run may have renewed meanwhile
+	r, _, err = h.lockStep(ctx, l, true) // decided again: the lease may have changed meanwhile
 	return r, err
 }
 
-// lockStep runs one action under leaseFlock. Unless fenced, acquire stops before taking over
-// a stale lease and says so: the caller must first hold fenceFlock.
+// lockStep runs one action under leaseFlock. Unless fenced, acquire stops before it takes a
+// free or stale lease and says so: the caller must first hold fenceFlock.
 func (h Host) lockStep(ctx context.Context, l wire.Lock, fenced bool) (wire.LockResult, bool, error) {
 	unlock, err := h.flock(ctx, leaseFlock)
 	if err != nil {
@@ -64,7 +61,7 @@ func (h Host) lockStep(ctx context.Context, l wire.Lock, fenced bool) (wire.Lock
 	}
 	s := leaseState{cur: cur, now: h.Now()}
 	s.mine = cur != nil && cur.RunID == l.Lease.RunID
-	s.live = cur != nil && s.now.Before(cur.RenewedAt.Add(time.Duration(cur.TTLSeconds)*time.Second))
+	s.live = cur != nil && s.now.Before(expiry(cur))
 	switch l.Action {
 	case wire.LockRelease:
 		if !s.mine {
@@ -95,8 +92,9 @@ func (h Host) renew(s leaseState) (wire.LockResult, error) {
 	return wire.LockResult{Held: true, Lease: s.cur}, h.writeLease(s.cur)
 }
 
-// acquire takes a free lease, renews the run's own live one, refuses another run's live one,
-// and takes over a stale one only when fenced.
+// acquire renews the run's own live lease, refuses another run's live one, and takes a free or
+// stale one only when fenced: a run that released, or whose lease expired, may still be
+// writing, and the next run must not start before that write ends.
 func (h Host) acquire(l wire.Lease, s leaseState, fenced bool) (wire.LockResult, bool, error) {
 	switch {
 	case s.mine && s.live:
@@ -104,11 +102,16 @@ func (h Host) acquire(l wire.Lease, s leaseState, fenced bool) (wire.LockResult,
 		return r, false, err
 	case s.live:
 		return wire.LockResult{Lease: s.cur}, false, nil
-	case s.cur != nil && !fenced:
+	case !fenced:
 		return wire.LockResult{}, true, nil
 	}
 	l.AcquiredAt, l.RenewedAt = s.now, s.now
 	return wire.LockResult{Held: true, Lease: &l, Previous: s.cur}, false, h.writeLease(&l)
+}
+
+// expiry is when a lease ends unless it is renewed, by the node's clock.
+func expiry(l *wire.Lease) time.Time {
+	return l.RenewedAt.Add(time.Duration(l.TTLSeconds) * time.Second)
 }
 
 // readLease is the node's lease, nil when it is free.
@@ -127,7 +130,7 @@ func (h Host) readLease() (*wire.Lease, error) {
 	return &l, nil
 }
 
-// writeLease replaces the lease file atomically: a render sees the old lease or the new one.
+// writeLease replaces the lease file atomically: a reader sees the old lease or the new one.
 func (h Host) writeLease(l *wire.Lease) error {
 	b, err := json.Marshal(l)
 	if err != nil {
@@ -154,12 +157,16 @@ func (h Host) removeLease() error {
 // flock takes an exclusive flock(2) on path, waiting while another process holds it, until
 // ctx ends. The returned func releases it; so does the helper's exit, whatever ends it.
 func (h Host) flock(ctx context.Context, path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Join(h.Root, stateDir), 0o700); err != nil {
+		return nil, fmt.Errorf("create %s: %w", stateDir, err)
+	}
+
 	f, err := os.OpenFile(filepath.Join(h.Root, path), os.O_RDWR|os.O_CREATE, 0o600) //nolint:gosec // one of our own fixed paths
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	for {
-		err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB) //nolint:gosec	// G115: a file descriptor fits an int
+		err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB) //nolint:gosec // G115: a file descriptor fits an int
 		if err == nil {
 			return func() { _ = f.Close() }, nil
 		}
@@ -174,6 +181,44 @@ func (h Host) flock(ctx context.Context, path string) (func(), error) {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+const codeLockLost = "lock.lost"
+
+// Fence starts a fenced op: it takes fenceFlock, so that no other run can take the lease until
+// the op ends, and checks that the node's lease is the run's and has not expired. The op calls
+// the returned func after its last write. The lease is read without leaseFlock: it is
+// replaced by rename, and while fenceFlock is held no other run can become its holder.
+func (h Host) Fence(ctx context.Context, runID string) (func(), error) {
+	unlock, err := h.flock(ctx, fenceFlock)
+	if err != nil {
+		return nil, err
+	}
+	cur, err := h.readLease()
+	if err == nil {
+		err = h.holds(cur, runID)
+	}
+	if err != nil {
+		unlock()
+		return nil, err
+	}
+	return unlock, nil
+}
+
+// holds refuses with lock.lost unless the lease is the run's and live.
+func (h Host) holds(cur *wire.Lease, runID string) error {
+	var why string
+	switch now := h.Now(); {
+	case cur == nil:
+		why = "no run holds it"
+	case cur.RunID != runID:
+		why = fmt.Sprintf("run %s holds it: %s by %s", cur.RunID, cur.Command, cur.By)
+	case !now.Before(expiry(cur)):
+		why = fmt.Sprintf("its lease expired %s ago", now.Sub(expiry(cur)).Round(time.Second))
+	default:
+		return nil
+	}
+	return &wire.Error{Code: codeLockLost, Message: "this run does not hold the lock", Detail: why}
 }
 
 // checkLock refuses an action the helper does not know, a run id that is not one, and a lease

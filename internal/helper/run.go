@@ -119,6 +119,11 @@ func stage(ctx context.Context, env Env, req wire.Request) (any, error) {
 	if err := checkStage(s); err != nil {
 		return nil, badRequest("args", err)
 	}
+	unlock, err := env.Host.Fence(ctx, req.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	return env.Host.Stage(ctx, s)
 }
 
@@ -141,6 +146,11 @@ func schema(ctx context.Context, env Env, req wire.Request) (any, error) {
 	if err := checkSchema(s); err != nil {
 		return nil, badRequest("args", err)
 	}
+	unlock, err := env.Host.Fence(ctx, req.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	return struct{}{}, env.Host.Schema(ctx, s)
 }
 
