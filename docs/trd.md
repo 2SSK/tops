@@ -569,14 +569,19 @@ need NTP; `hello` reports `clockSynced` and mutating commands warn when false.
 ## Snapshots, history, rollback
 
 - `write` and `restore` first copy every path they change (file, symlink, absence) into
-  `/var/lib/tops/snapshots/<apply-id>/`, content-addressed, 0700. Newest 10 kept. A path already in the
+  `/var/lib/tops/snapshots/<apply-id>/`, content-addressed, 0700. `write` keeps the newest 10, the apply's own always; `restore` drops
+  none, so a retry still finds the one it restores. A path already in the
   apply's snapshot keeps its first entry: an apply writes a node several times, and rollback brings back
   the state before its first write. A file already as wanted (content, mode, owner, group) is not
   written, and a write that changes nothing saves no snapshot.
 - `write` changes only the paths render makes (`/etc/temporal/<name>`, `temporal@.service`, a role's
   `limits.conf`); anything else, a mode beyond `0777`, or a request without an apply id is
   `helper.bad_request`. Each file: temporary file (0600) in the same directory, chmod, chown, `fsync`,
-  rename, directory `fsync`.
+  rename, directory `fsync`; a directory it creates is synced into its parent. Every `write` and
+  `restore` first removes the temporary files a killed one left. The helper sets umask 022: sudo may
+  hand it 077, which would keep the temporal user out of `/etc/temporal` and `/opt/temporal`.
+- `restore` reads and checks every saved content before its first change; a snapshot that is gone or
+  damaged is `snapshot.missing`. It saves the live state under the run's own apply id first.
 - History record per node per run in `/var/lib/tops/history/<apply-id>.json`; newest 100 kept.
 - `/var/lib/tops/applied.json`: sha256 of every file as tops last wrote it, the enabled roles and `current`.
   `plan` and `drift` use it to tell hand edits from spec changes.

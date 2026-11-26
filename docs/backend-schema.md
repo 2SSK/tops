@@ -491,7 +491,7 @@ type JournalEntry struct {
 | `release.download`      | HTTP error fetching a release                               |
 | `schema.failed`         | Schema tool exited non-zero (stderr without secrets)        |
 | `validate.failed`       | A check failed (each check in the result)                   |
-| `snapshot.missing`      | `restore` of a rotated-out snapshot                         |
+| `snapshot.missing`      | `restore` of a snapshot that was rotated out, or whose content is gone or damaged; nothing changed |
 
 ## Node state (`/var/lib/tops`)
 

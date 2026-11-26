@@ -195,7 +195,7 @@ func (h Host) names() (names, error) {
 	return names{users: users, groups: groups, uids: uids, gids: gids}, nil
 }
 
-// readIDs reads "name:x:id:..." lines, the format of both /etc/passwd and  /etc/group: each
+// readIDs reads "name:x:id:..." lines, the format of both /etc/passwd and /etc/group: each
 // id's name, and each name's id.
 func readIDs(file string) (map[uint32]string, map[string]uint32, error) {
 	b, err := os.ReadFile(filepath.Clean(file))

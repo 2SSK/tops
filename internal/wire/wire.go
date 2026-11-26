@@ -25,6 +25,7 @@ const (
 	OpSchema   Op = "schema"
 	OpLock     Op = "lock"
 	OpWrite    Op = "write"
+	OpRestore  Op = "restore"
 )
 
 // Timeout is how long one op may take (TRD "Timeouts"): stage downloads releases, and schema
@@ -262,4 +263,11 @@ type WriteResult struct {
 	Snapshot string   `json:"snapshot"`
 	Written  []string `json:"written"`
 	Removed  []string `json:"removed"`
+}
+
+// Restore asks the helper to bring back every path an apply changed on the node, as the
+// apply's snapshot holds it. The result is a WriteResult: restore is itself a write, saved
+// under the request's apply id.
+type Restore struct {
+	Snapshot string `json:"snapshot"` // the apply id to undo
 }

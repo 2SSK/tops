@@ -3,6 +3,7 @@ package cli
 import (
 	"log/slog"
 	"os"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -20,6 +21,7 @@ func newNodeCommand(opts *Options) *cobra.Command {
 		Hidden: true,
 		Args:   usageArgs(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			syscall.Umask(0o022) // sudo may pass on 077: what stage and write create is for the temporal user too
 			// An error leaves exe empty: hello then fails with a response that say so.
 			exe, _ := os.Executable()
 			code := helper.Run(cmd.Context(), wire.Op(args[0]), helper.Env{

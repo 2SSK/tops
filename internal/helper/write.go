@@ -20,10 +20,14 @@ import (
 
 const (
 	snapshotsDir  = "/var/lib/tops/snapshots"
+	keepSnapshots = 10
 	codeFileWrite = "file.write"
+	tempMark      = ".tops-" // in the name of every temporary file
 )
 
 var (
+	// writable is every path write may change: the files render makes, and nothing else, so
+	// a request can never make root write elsewhere.
 	writable = regexp.MustCompile(`^(/etc/temporal/[a-z][a-z0-9.-]*|/etc/systemd/system/temporal@\.service|/etc/systemd/system/temporal@[a-z]+\.service\.d/limits\.conf)$`)
 	// applyIDName is an apply id, "20261023T153012Z-7f3a": a directory name under snapshots.
 	applyIDName = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$`)
@@ -46,41 +50,92 @@ type snapshotEntry struct {
 	Group  string `json:"group,omitempty"`
 }
 
-// Write puts each file in place and removes the paths in Remove. First it saves every path
-// it is about to change in the apply's snapshot; a file already as wanted, or a path already
-// absent, is left alone, so a second write changes nothing and saves nothing.
+// Write puts each file in place and removes the paths in Remove, then drops the snapshots
+// beyond the newest ten.
 func (h Host) Write(applyID string, w wire.Write) (wire.WriteResult, error) {
+	r, err := h.put(applyID, w, nil)
+	if err != nil || r.Snapshot == "" {
+		return r, err
+	}
+	return r, h.pruneSnapshots(applyID)
+}
+
+// link is a symlink restore puts back; write makes none.
+type link struct{ path, target string }
+
+// put makes the node's files, links and absences what the caller wants. First it saves every
+// path it is about to change in the apply's snapshot; a path already as wanted is left alone,
+// so a second put changes nothing and saves nothing.
+func (h Host) put(applyID string, w wire.Write, links []link) (wire.WriteResult, error) {
+	if err := h.sweep(); err != nil {
+		return wire.WriteResult{}, err
+	}
 	n, err := h.names()
 	if err != nil {
 		return wire.WriteResult{}, err
 	}
-	r, err := h.changes(w, n)
+	r, err := h.changes(w, links, n)
 	if err != nil || len(r.Written)+len(r.Removed) == 0 {
 		return r, err
 	}
-	if err := h.snapshot(applyID, append(slices.Clone(r.Written), r.Removed...), n); err != nil {
+	if err := h.snapshot(applyID, slices.Concat(r.Written, r.Removed), n); err != nil {
 		return wire.WriteResult{}, err
 	}
 	r.Snapshot = applyID
+	return r, h.apply(w, links, r, n)
+}
+
+// apply makes the changes in r, each path on its own.
+func (h Host) apply(w wire.Write, links []link, r wire.WriteResult, n names) error {
 	for _, f := range w.Files {
 		if !slices.Contains(r.Written, f.Path) {
 			continue
 		}
+		uid, gid, err := n.ids(f)
+		if err != nil {
+			return err
+		}
 		mode, _ := strconv.ParseUint(f.Mode, 8, 32)
-		if err := replaceFile(filepath.Join(h.Root, f.Path), f.Content, fs.FileMode(mode), int(n.uids[f.Owner]), int(n.gids[f.Group])); err != nil {
-			return wire.WriteResult{}, fileError("write", f.Path, err)
+		if err := replaceFile(filepath.Join(h.Root, f.Path), f.Content, fs.FileMode(mode), uid, gid); err != nil {
+			return fileError("write", f.Path, err)
+		}
+	}
+	for _, l := range links {
+		if !slices.Contains(r.Written, l.path) {
+			continue
+		}
+		if err := replaceLink(filepath.Join(h.Root, l.path), l.target); err != nil {
+			return fileError("link", l.path, err)
 		}
 	}
 	for _, path := range r.Removed {
 		if err := removeFile(filepath.Join(h.Root, path)); err != nil {
-			return wire.WriteResult{}, fileError("remove", path, err)
+			return fileError("remove", path, err)
 		}
 	}
-	return r, nil
+	return nil
 }
 
-// changes is what w would change: the files not already in place, the paths still there.
-func (h Host) changes(w wire.Write, n names) (wire.WriteResult, error) {
+// sweep removes the temporary files a killed write left behind: they may hold secrets. The
+// fence is held, so no other write is using them.
+func (h Host) sweep() error {
+	for _, dir := range []string{"etc/temporal", "etc/systemd/system", "etc/systemd/system/temporal@*.service.d"} {
+		left, err := filepath.Glob(filepath.Join(h.Root, dir, ".*"+tempMark+"*"))
+		if err != nil {
+			return err
+		}
+		for _, full := range left {
+			if err := removeFile(full); err != nil {
+				return fileError("remove", full, err)
+			}
+		}
+	}
+	return nil
+}
+
+// changes is what put would change: the files and links not already in place, the paths
+// still there.
+func (h Host) changes(w wire.Write, links []link, n names) (wire.WriteResult, error) {
 	var r wire.WriteResult
 	for _, f := range w.Files {
 		same, err := h.inPlace(f, n)
@@ -89,6 +144,11 @@ func (h Host) changes(w wire.Write, n names) (wire.WriteResult, error) {
 		}
 		if !same {
 			r.Written = append(r.Written, f.Path)
+		}
+	}
+	for _, l := range links {
+		if target, err := os.Readlink(filepath.Join(h.Root, l.path)); err != nil || target != l.target {
+			r.Written = append(r.Written, l.path)
 		}
 	}
 	for _, path := range w.Remove {
@@ -128,17 +188,13 @@ func (h Host) inPlace(f wire.File, n names) (bool, error) {
 // back the state before its first write. Contents are stored by their sha256, so a file is
 // stored once however many paths had it.
 func (h Host) snapshot(applyID string, paths []string, n names) error {
-	dir := filepath.Join(h.Root, snapshotsDir, applyID)
-	if err := os.MkdirAll(filepath.Join(dir, "files"), 0o700); err != nil {
-		return fileError("create", filepath.Join(snapshotsDir, applyID), err)
+	m, _, err := h.manifest(applyID)
+	if err != nil {
+		return err
 	}
-	m := snapshotManifest{ApplyID: applyID}
-	if b, err := os.ReadFile(filepath.Join(dir, "manifest.json")); err == nil { //nolint:gosec // under our own state dir
-		if err := json.Unmarshal(b, &m); err != nil {
-			return fileError("read", filepath.Join(snapshotsDir, applyID, "manifest.json"), err)
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fileError("read", filepath.Join(snapshotsDir, applyID, "manifest.json"), err)
+	dir := filepath.Join(h.Root, snapshotsDir, applyID)
+	if err := makeDir(filepath.Join(dir, "files"), 0o700); err != nil {
+		return fileError("create", filepath.Join(snapshotsDir, applyID), err)
 	}
 	for _, path := range paths {
 		if slices.ContainsFunc(m.Entries, func(e snapshotEntry) bool {
@@ -158,6 +214,44 @@ func (h Host) snapshot(applyID string, paths []string, n names) error {
 	}
 	if err := replaceFile(filepath.Join(dir, "manifest.json"), b, 0o600, -1, -1); err != nil {
 		return fileError("write", filepath.Join(snapshotsDir, applyID, "manifest.json"), err)
+	}
+	return nil
+}
+
+// manifest is the apply's snapshot manifest; false when the node has no such snapshot.
+func (h Host) manifest(applyID string) (snapshotManifest, bool, error) {
+	m := snapshotManifest{ApplyID: applyID}
+	path := filepath.Join(snapshotsDir, applyID, "manifest.json")
+	b, err := os.ReadFile(filepath.Join(h.Root, path)) //nolint:gosec // our own state, the id checked
+	if errors.Is(err, fs.ErrNotExist) {
+		return m, false, nil
+	}
+	if err == nil {
+		err = json.Unmarshal(b, &m)
+	}
+	if err != nil {
+		return m, false, fileError("read", path, err)
+	}
+	return m, true, nil
+}
+
+// pruneSnapshots keeps the newest ten snapshots, applyID's own always among them: apply ids
+// carry the workstation's clock, and a slow one must not cost an apply its own undo.
+func (h Host) pruneSnapshots(applyID string) error {
+	entries, err := os.ReadDir(filepath.Join(h.Root, snapshotsDir)) // by name, so oldest first
+	if err != nil {
+		return fileError("read", snapshotsDir, err)
+	}
+	var others []string
+	for _, e := range entries {
+		if e.Name() != applyID && applyIDName.MatchString(e.Name()) {
+			others = append(others, e.Name())
+		}
+	}
+	for _, id := range others[:max(0, len(others)-(keepSnapshots-1))] {
+		if err := os.RemoveAll(filepath.Join(h.Root, snapshotsDir, id)); err != nil {
+			return fileError("remove", filepath.Join(snapshotsDir, id), err)
+		}
 	}
 	return nil
 }
@@ -196,10 +290,10 @@ func (h Host) saveEntry(dir, path string, n names) (snapshotEntry, error) {
 // directory is synced so the rename itself survives a power loss.
 func replaceFile(full string, content []byte, mode fs.FileMode, uid, gid int) error {
 	dir := filepath.Dir(full)
-	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // G301: the temporal user must reach /etc/temporal; each file has its own mode
+	if err := makeDir(dir, 0o755); err != nil { // the temporal user must reach /etc/temporal; each file has its own mode
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(full)+".tops-*")
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(full)+tempMark+"*")
 	if err != nil {
 		return err
 	}
@@ -215,6 +309,34 @@ func replaceFile(full string, content []byte, mode fs.FileMode, uid, gid int) er
 		return err
 	}
 	return syncDir(dir)
+}
+
+// replaceLink makes full a symlink to target, atomically and durably as replaceFile does.
+func replaceLink(full, target string) error {
+	tmp := filepath.Join(filepath.Dir(full), "."+filepath.Base(full)+tempMark+"link")
+	if err := os.Symlink(target, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, full); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(full))
+}
+
+// makeDir is os.MkdirAll that also syncs each parent it adds to: without that, a power loss
+// can take a new directory away with the files synced inside it.
+func makeDir(dir string, mode fs.FileMode) error {
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	parent := filepath.Dir(dir)
+	if err := makeDir(parent, mode); err != nil {
+		return err
+	}
+	if err := os.Mkdir(dir, mode); err != nil && !errors.Is(err, fs.ErrExist) {
+		return err
+	}
+	return syncDir(parent)
 }
 
 // removeFile removes full and syncs its directory, so the removal survives a crash.
@@ -237,14 +359,24 @@ func fileError(verb, path string, err error) error {
 	return &wire.Error{Code: codeFileWrite, Message: verb + " " + path, Detail: err.Error()}
 }
 
-// ids are f's owner and group as the node numbers them.
+// ids are f's owner and group as the node numbers them. A snapshot names an owner without an
+// account by its number.
 func (n names) ids(f wire.File) (int, int, error) {
-	uid, okU := n.uids[f.Owner]
-	gid, okG := n.gids[f.Group]
+	uid, okU := idOf(n.uids, f.Owner)
+	gid, okG := idOf(n.gids, f.Group)
 	if !okU || !okG {
 		return 0, 0, &wire.Error{Code: codeFileWrite, Message: "write " + f.Path, Detail: fmt.Sprintf("no user %s or group %s on this node", f.Owner, f.Group)}
 	}
-	return int(uid), int(gid), nil
+	return uid, gid, nil
+}
+
+// idOf is the id nameOr gave name for.
+func idOf(m map[string]uint32, name string) (int, bool) {
+	if id, ok := m[name]; ok {
+		return int(id), true
+	}
+	id, err := strconv.ParseUint(name, 10, 32)
+	return int(id), err == nil //nolint:gosec // G115: 32 bits, parsed as such
 }
 
 // checkWrite refuses a write without an apply id to snapshot under, a path render does not

@@ -141,3 +141,9 @@ func (n *Node) Lock(ctx context.Context, l wire.Lock) (wire.LockResult, error) {
 func (n *Node) Write(ctx context.Context, w wire.Write) (wire.WriteResult, error) {
 	return nodeOp[wire.WriteResult](ctx, n, wire.OpWrite, w)
 }
+
+// Restore brings back every path an apply changed on the node, from the snapshot the helper
+// saved, after it saved what is there now under the run's own apply id.
+func (n *Node) Restore(ctx context.Context, r wire.Restore) (wire.WriteResult, error) {
+	return nodeOp[wire.WriteResult](ctx, n, wire.OpRestore, r)
+}
