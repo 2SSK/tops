@@ -16,12 +16,19 @@ import (
 // unitPatterns are the units facts reports: one temporal@<role> per role, and the UI.
 var unitPatterns = []string{"temporal@*.service", "temporal-ui.service"}
 
-// Systemd is the part of systemd's D-Bus API the helper reads. *dbus.Conn has it; tests
+// Systemd is the part of systemd's D-Bus API the helper uses. *dbus.Conn has it; tests
 // fake it.
 type Systemd interface {
 	ListUnitsByPatternsContext(ctx context.Context, states, patterns []string) ([]dbus.UnitStatus, error)
+	ListUnitsByNamesContext(ctx context.Context, units []string) ([]dbus.UnitStatus, error)
 	GetUnitPropertiesContext(ctx context.Context, unit string) (map[string]any, error)
 	GetUnitTypePropertiesContext(ctx context.Context, unit, unitType string) (map[string]any, error)
+	StartUnitContext(ctx context.Context, name, mode string, ch chan<- string) (int, error)
+	StopUnitContext(ctx context.Context, name, mode string, ch chan<- string) (int, error)
+	RestartUnitContext(ctx context.Context, name, mode string, ch chan<- string) (int, error)
+	EnableUnitFilesContext(ctx context.Context, files []string, runtime, force bool) (bool, []dbus.EnableUnitFileChange, error)
+	DisableUnitFilesContext(ctx context.Context, files []string, runtime bool) ([]dbus.DisableUnitFileChange, error)
+	ReloadContext(ctx context.Context) error
 	Close()
 }
 
@@ -31,7 +38,7 @@ func systemBus(ctx context.Context) (Systemd, error) {
 }
 
 // units returns every unit systemd has loaded that matches unitPatterns, in any state.
-// An enabled unit is laoded even when it never started, so none is missed.
+// An enabled unit is loaded even when it never started, so none is missed.
 func (h Host) units(ctx context.Context) (map[string]wire.UnitState, error) {
 	conn, err := h.Systemd(ctx)
 	if err != nil {

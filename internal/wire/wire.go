@@ -26,13 +26,20 @@ const (
 	OpLock     Op = "lock"
 	OpWrite    Op = "write"
 	OpRestore  Op = "restore"
+	OpService  Op = "service"
 )
 
-// Timeout is how long one op may take (TRD "Timeouts"): stage downloads releases, and schema
-// migrates the databases. The helper ends its op then, and with it any fence the op holds
+// Timeout is how long one op may take (TRD "Timeouts"): stage downloads resleases, schema
+// migrates the databases, and service waits for systemd's own stop and start timeouts. The
+// helper ends its op then, and with it any fence the op holds
 func Timeout(op Op) time.Duration {
-	if op == OpStage || op == OpSchema {
+	switch op {
+	case OpStage, OpSchema:
 		return 10 * time.Minute
+	case OpService:
+		// A restart stops for up to TimeoutStopSec (90 s), kills, and starts for up to
+		// TimeoutStartSec (90 s): systemd ends the job within this, so the fence outlives it.
+		return 5 * time.Minute
 	}
 	return time.Minute
 }
@@ -270,4 +277,21 @@ type WriteResult struct {
 // under the request's apply id.
 type Restore struct {
 	Snapshot string `json:"snapshot"` // the apply id to undo
+}
+
+// The service op's actions: one systemd job each; enable-now and disable-now also change
+// whether the unit starts at boot.
+const (
+	ServiceStart      = "start"
+	ServiceStop       = "stop"
+	ServiceRestart    = "restart"
+	ServiceEnableNow  = "enable-now"
+	ServiceDisableNow = "disable-now"
+)
+
+// Service asks the helper to act on one role's unit and wait for systemd's job to end. The
+// result is the unit's UnitState after it.
+type Service struct {
+	Unit   string `json:"unit"` // temporal@history.service
+	Action string `json:"action"`
 }

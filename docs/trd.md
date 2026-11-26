@@ -457,7 +457,7 @@ prints `not validated: 1.31.3 not staged` and does not fail.
 | Not read  | `~/.ssh/config`, `ProxyJump`; agent forwarding never requested                                                                                                                                               |
 | Sessions  | One client per node per run; each helper call one `session.Run`; tunnels by `client.DialContext`                                                                                                             |
 | Keepalive | Every 15 s; 3 misses = unreachable                                                                                                                                                                           |
-| Timeouts  | Dial 5 s; helper op 60 s (stage and schema 10 min; journal follow and `run` unbounded). The helper ends its own op at that time, so a fence is never held longer; the workstation waits 15 s more for its answer |
+| Timeouts  | Dial 5 s; helper op 60 s (stage and schema 10 min; service 5 min, as a restart may stop for `TimeoutStopSec` and start for `TimeoutStartSec`, 90 s each; journal follow and `run` unbounded). The helper ends its own op at that time, so a fence is never held longer; the workstation waits 15 s more for its answer |
 | Preflight | `sudo -n true` succeeds; a tunnel to `127.0.0.1:22` opens (`ssh.forwarding_disabled` otherwise)                                                                                                              |
 
 ### Helper upload and invocation

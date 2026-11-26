@@ -147,3 +147,8 @@ func (n *Node) Write(ctx context.Context, w wire.Write) (wire.WriteResult, error
 func (n *Node) Restore(ctx context.Context, r wire.Restore) (wire.WriteResult, error) {
 	return nodeOp[wire.WriteResult](ctx, n, wire.OpRestore, r)
 }
+
+// Service runs one systemd job on a role's unit and returns the unit's state after it.
+func (n *Node) Service(ctx context.Context, s wire.Service) (wire.UnitState, error) {
+	return nodeOp[wire.UnitState](ctx, n, wire.OpService, s)
+}

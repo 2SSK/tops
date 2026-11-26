@@ -17,8 +17,8 @@ func TestErrorIsAnError(t *testing.T) {
 	}
 }
 
-// TestTimeout: every op gets the TRD's 60 s, except stage, which downloads releases, and
-// schema, which migrates the databases.
+// TestTimeout: every op gets the TRD's 60 s, except stage, which downloads releases, schema,
+// which migrates the databases, and service, whose restart may stop for 90 s and start for 90.
 func TestTimeout(t *testing.T) {
 	for op, want := range map[Op]time.Duration{
 		OpHello:    time.Minute,
@@ -27,6 +27,9 @@ func TestTimeout(t *testing.T) {
 		OpLock:     time.Minute,
 		OpStage:    10 * time.Minute,
 		OpSchema:   10 * time.Minute,
+		OpWrite:    time.Minute,
+		OpRestore:  time.Minute,
+		OpService:  5 * time.Minute,
 	} {
 		if got := Timeout(op); got != want {
 			t.Errorf("Timeout(%s) = %v, want %v", op, got, want)

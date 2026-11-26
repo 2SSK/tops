@@ -52,6 +52,7 @@ var handlers = map[wire.Op]handler{
 	wire.OpLock:     lock,
 	wire.OpWrite:    writeFiles,
 	wire.OpRestore:  restore,
+	wire.OpService:  service,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -201,6 +202,22 @@ func restore(ctx context.Context, env Env, req wire.Request) (any, error) {
 	}
 	defer unlock()
 	return env.Host.Restore(req.ApplyID, r.Snapshot)
+}
+
+func service(ctx context.Context, env Env, req wire.Request) (any, error) {
+	var s wire.Service
+	if err := decodeArgs(req.Args, &s); err != nil {
+		return nil, err
+	}
+	if err := checkService(s); err != nil {
+		return nil, badRequest("args", err)
+	}
+	unlock, err := env.Host.Fence(ctx, req.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return env.Host.Service(ctx, s)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so

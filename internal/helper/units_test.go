@@ -17,13 +17,15 @@ import (
 
 // fakeSystemd answers like systemd's D-Bus API from fixed units. A unit's properties are
 // those of GetUnitProperties and GetUnitTypeProperties(…, "Service") merged; failOn makes
-// one call fail.
+// one call fail. Every job ends with result, "done" when empty; "hang" ends none.
 type fakeSystemd struct {
 	units  []dbus.UnitStatus
 	props  map[string]map[string]any
 	failOn string
+	result string
 	closed bool
 	asked  []string // the patterns ListUnitsByPatterns was given
+	calls  []string // the jobs, enables, disables and reloads asked for, in order
 }
 
 func (f *fakeSystemd) ListUnitsByPatternsContext(_ context.Context, _, patterns []string) ([]dbus.UnitStatus, error) {

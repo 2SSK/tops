@@ -486,7 +486,7 @@ type JournalEntry struct {
 | `lock.lost`             | Fenced op: the lease names another run, or expired          |
 | `lock.busy`             | Acquire: a fenced op of the run that released or went stale still runs after the acquire's 60 s (that run in detail) |
 | `file.write`            | Write, fsync or rename failed (path in detail)              |
-| `systemd.job_failed`    | A unit job ended in `failed` (unit and result in detail)    |
+| `systemd.job_failed`    | A unit job ended other than `done`: `failed`, `timeout`, `dependency`, `canceled` (unit in message, result in detail) |
 | `release.checksum`      | Downloaded archive does not match the given sha256          |
 | `release.download`      | HTTP error fetching a release                               |
 | `schema.failed`         | Schema tool exited non-zero (stderr without secrets)        |
