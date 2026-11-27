@@ -583,8 +583,11 @@ need NTP; `hello` reports `clockSynced` and mutating commands warn when false.
 - `restore` reads and checks every saved content before its first change; a snapshot that is gone or
   damaged is `snapshot.missing`. It saves the live state under the run's own apply id first.
 - History record per node per run in `/var/lib/tops/history/<apply-id>.json`; newest 100 kept.
-- `/var/lib/tops/applied.json`: sha256 of every file as tops last wrote it, the enabled roles and `current`.
-  `plan` and `drift` use it to tell hand edits from spec changes.
+- `/var/lib/tops/applied.json` (0600): sha256, mode, owner and group of every file as tops last wrote it,
+  the roles it enabled, and `current` (from `upgrade`, T7). `write` and `restore` record the files they
+  were given, `service` the role `enable-now` or `disable-now` changed; both record even when nothing
+  on the node changed, so a retry records what a failed record missed. The apply id is the last one
+  that changed the record. `plan` and `drift` use it to tell hand edits from spec changes.
 - Releases: `/opt/temporal/releases/<v>` is kept while `current` or a kept snapshot references it; others
   beyond the newest 3 are removed by `stage`.
 - `rollback <id>` restores that snapshot on every node that has it, rolling with the gates. It is a `write`

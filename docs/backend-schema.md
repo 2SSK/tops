@@ -346,7 +346,7 @@ type Event struct {
 | `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease }`; run and apply id from the request | `{ "held": bool, "lease": Lease?, "previous": Lease?, "now": time }` (`now`: the node's clock) | no |
 | `write`    | `{ "files": [File], "remove": ["<path>"] }`; `symlinks` for `current` come with `upgrade` (T7), host effects with T6.1 | `WriteResult` | no |
 | `restore`  | `{ "snapshot": "<apply-id>" }`                                                         | `WriteResult`                                | no       |
-| `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }`; every start and restart runs `daemon-reload` first | `UnitState`      | no       |
+| `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }`; every start and restart runs `daemon-reload` first; needs an apply id, under which `enable-now` and `disable-now` record the role in `applied.json` | `UnitState`      | no       |
 | `history`  | `{ "action": "append", "record": History }` or `{ "action": "list", "limit": 20 }`     | `{ "records": [History] }`                   | no       |
 | `top`      | `{ "units": ["…"], "sampleMs": 1000 }`                                                 | `{ "units": {"<unit>": Top} }`               | no       |
 | `journal`  | `{ "units": ["…"], "since", "until", "lines": 200, "grep": ["…"], "follow": bool }`    | `{ "count": n }`                             | `journal` |

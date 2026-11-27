@@ -100,7 +100,7 @@ func TestService(t *testing.T) {
 	} {
 		t.Run(tc.action, func(t *testing.T) {
 			sd := twoRoles()
-			st, err := hostWith(t, sd).Service(t.Context(), wire.Service{Unit: historyUnit, Action: tc.action})
+			st, err := hostWith(t, sd).Service(t.Context(), applyA, wire.Service{Unit: historyUnit, Action: tc.action})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -138,7 +138,7 @@ func TestServiceFails(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sd := twoRoles()
 			sd.failOn, sd.result = tc.failOn, tc.result
-			_, err := hostWith(t, sd).Service(t.Context(), wire.Service{Unit: historyUnit, Action: tc.action})
+			_, err := hostWith(t, sd).Service(t.Context(), applyA, wire.Service{Unit: historyUnit, Action: tc.action})
 			if got := errText(err); got != tc.want || len(sd.calls) != tc.calls {
 				t.Errorf("error %q after %q, want %q after %d calls", got, sd.calls, tc.want, tc.calls)
 			}
@@ -149,7 +149,7 @@ func TestServiceFails(t *testing.T) {
 		sd.result = "hang"
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 		defer cancel()
-		_, err := hostWith(t, sd).Service(ctx, wire.Service{Unit: historyUnit, Action: wire.ServiceStop})
+		_, err := hostWith(t, sd).Service(ctx, applyA, wire.Service{Unit: historyUnit, Action: wire.ServiceStop})
 		if !errors.Is(err, context.DeadlineExceeded) || !strings.HasPrefix(err.Error(), "stop "+historyUnit+": ") {
 			t.Errorf("error = %v, want the stop's deadline", err)
 		}
@@ -157,7 +157,7 @@ func TestServiceFails(t *testing.T) {
 	t.Run("connect", func(t *testing.T) {
 		h := hostWith(t, twoRoles())
 		h.Systemd = func(context.Context) (Systemd, error) { return nil, errors.New("no bus") }
-		if _, err := h.Service(t.Context(), wire.Service{Unit: historyUnit, Action: wire.ServiceStart}); errText(err) != "connect to systemd: no bus" {
+		if _, err := h.Service(t.Context(), applyA, wire.Service{Unit: historyUnit, Action: wire.ServiceStart}); errText(err) != "connect to systemd: no bus" {
 			t.Errorf("error = %v", err)
 		}
 	})
@@ -179,12 +179,12 @@ func serviceRequest(t *testing.T, s wire.Service) string {
 	t.Helper()
 	args, err := json.Marshal(s)
 	must(t, err)
-	b, _ := json.Marshal(wire.Request{RunID: "r-1", By: "ssk@thinkpad", Args: args})
+	b, _ := json.Marshal(wire.Request{RunID: "r-1", ApplyID: applyA, By: "ssk@thinkpad", Args: args})
 	return string(b)
 }
 
-// TestRunServiceRefused: only a role's unit and the five actions; no lease, no job. None of
-// them reaches systemd.
+// TestRunServiceRefused: only a role's unit and the five actions, only with an apply id to
+// record under; no lease, no job. None of them reaches systemd.
 func TestRunServiceRefused(t *testing.T) {
 	sd := twoRoles()
 	h := hostWith(t, sd)
@@ -200,6 +200,11 @@ func TestRunServiceRefused(t *testing.T) {
 		if code, resp, _ := run(t, Env{Host: h, Root: true}, wire.OpService, serviceRequest(t, s)); code != ExitBadRequest || resp.Error.Code != codeBadRequest {
 			t.Errorf("%+v: exit %d, %+v, want a bad request", s, code, resp.Error)
 		}
+	}
+	args, _ := json.Marshal(wire.Service{Unit: historyUnit, Action: wire.ServiceRestart})
+	noApply, _ := json.Marshal(wire.Request{RunID: "r-1", By: "ssk@thinkpad", Args: args})
+	if code, resp, _ := run(t, Env{Host: h, Root: true}, wire.OpService, string(noApply)); code != ExitBadRequest || resp.Error.Code != codeBadRequest {
+		t.Errorf("without an apply id: exit %d, %+v, want a bad request", code, resp.Error)
 	}
 	restart := serviceRequest(t, wire.Service{Unit: historyUnit, Action: wire.ServiceRestart})
 	if code, resp, _ := run(t, Env{Host: h, Root: true}, wire.OpService, restart); code != ExitNotOK || resp.Error.Code != codeLockLost {

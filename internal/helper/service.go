@@ -18,14 +18,18 @@ var roleUnit = regexp.MustCompile(`^temporal@[a-z]+\.service$`)
 type jobStart func(ctx context.Context, name, mode string, ch chan<- string) (int, error)
 
 // Service acts on a role's unit and waits for every job it starts to end. A job that ends in
-// anything but "done" is systemd.job_failed, although the D-Bus call itself succeeded.
-func (h Host) Service(ctx context.Context, s wire.Service) (wire.UnitState, error) {
+// anything but "done" is systemd.job_failed, although the D-Bus call itself succeeded. The
+// roles it enables and disables are recorded in applied.json, under applyID.
+func (h Host) Service(ctx context.Context, applyID string, s wire.Service) (wire.UnitState, error) {
 	conn, err := h.Systemd(ctx)
 	if err != nil {
 		return wire.UnitState{}, fmt.Errorf("connect to systemd: %w", err)
 	}
 	defer conn.Close()
 	if err := act(ctx, conn, s); err != nil {
+		return wire.UnitState{}, err
+	}
+	if err := h.recordRoles(applyID, s); err != nil {
 		return wire.UnitState{}, err
 	}
 	loaded, err := conn.ListUnitsByNamesContext(ctx, []string{s.Unit})
@@ -97,8 +101,12 @@ func job(ctx context.Context, start jobStart, verb, unit string) error {
 	}
 }
 
-// checkService refuses a unit that is not a role's, and an action service does not have.
-func checkService(s wire.Service) error {
+// checkService refuses a request without an apply id to record under, a unit that is not a
+// role's, and an action service does not have.
+func checkService(applyID string, s wire.Service) error {
+	if !applyIDName.MatchString(applyID) {
+		return fmt.Errorf("apply id %q is not one", applyID)
+	}
 	if !roleUnit.MatchString(s.Unit) {
 		return fmt.Errorf("unit %q is not a role's temporal@<role>.service", s.Unit)
 	}

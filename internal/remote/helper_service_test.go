@@ -3,6 +3,9 @@
 package remote
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"slices"
 	"strings"
 	"testing"
 
@@ -114,5 +117,30 @@ func TestHelperDropIn(t *testing.T) {
 	}
 	if got := memoryMax(); got != "infinity infinity max" {
 		t.Errorf("after the restore: %q", got)
+	}
+}
+
+// TestHelperApplied: on a real node, facts reads back what write and service recorded in
+// applied.json, which is root's alone.
+func TestHelperApplied(t *testing.T) {
+	c, n := serviceNode(t)
+	limits := wire.File{Path: "/etc/systemd/system/temporal@history.service.d/limits.conf", Content: []byte("[Service]\nMemoryMax=1G\n"), Mode: "0644", Owner: "root", Group: "root"}
+	if _, err := n.Write(t.Context(), wire.Write{Files: []wire.File{limits}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.Service(t.Context(), wire.Service{Unit: "temporal@history.service", Action: wire.ServiceEnableNow}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := n.Facts(t.Context(), wire.FactsArgs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(limits.Content)
+	want := wire.AppliedFile{SHA256: hex.EncodeToString(sum[:]), Mode: "0644", Owner: "root", Group: "root"}
+	if a := f.Applied; a == nil || a.ApplyID != "20261126T100000Z-aaaa" || !slices.Equal(a.Roles, []string{"history"}) || a.Files[limits.Path] != want {
+		t.Errorf("applied = %+v", a)
+	}
+	if got := docker(t, nil, "exec", c.id, "stat", "-c", "%a %U %G", "/var/lib/tops", "/var/lib/tops/applied.json"); got != "700 root root\n600 root root" {
+		t.Errorf("state:\n%s", got)
 	}
 }

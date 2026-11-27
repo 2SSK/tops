@@ -65,7 +65,8 @@ type link struct{ path, target string }
 
 // put makes the node's files, links and absences what the caller wants. First it saves every
 // path it is about to change in the apply's snapshot; a path already as wanted is left alone,
-// so a second put changes nothing and saves nothing.
+// so a second put changes nothing and saves nothing. Last it records the files in
+// applied.json
 func (h Host) put(applyID string, w wire.Write, links []link) (wire.WriteResult, error) {
 	if err := h.sweep(); err != nil {
 		return wire.WriteResult{}, err
@@ -75,14 +76,19 @@ func (h Host) put(applyID string, w wire.Write, links []link) (wire.WriteResult,
 		return wire.WriteResult{}, err
 	}
 	r, err := h.changes(w, links, n)
-	if err != nil || len(r.Written)+len(r.Removed) == 0 {
+	if err != nil {
 		return r, err
 	}
-	if err := h.snapshot(applyID, slices.Concat(r.Written, r.Removed), n); err != nil {
-		return wire.WriteResult{}, err
+	if len(r.Written)+len(r.Removed) > 0 {
+		if err := h.snapshot(applyID, slices.Concat(r.Written, r.Removed), n); err != nil {
+			return wire.WriteResult{}, err
+		}
+		r.Snapshot = applyID
+		if err := h.apply(w, links, r, n); err != nil {
+			return r, err
+		}
 	}
-	r.Snapshot = applyID
-	return r, h.apply(w, links, r, n)
+	return r, h.recordFiles(applyID, w)
 }
 
 // apply makes the changes in r, each path on its own.

@@ -209,7 +209,7 @@ func service(ctx context.Context, env Env, req wire.Request) (any, error) {
 	if err := decodeArgs(req.Args, &s); err != nil {
 		return nil, err
 	}
-	if err := checkService(s); err != nil {
+	if err := checkService(req.ApplyID, s); err != nil {
 		return nil, badRequest("args", err)
 	}
 	unlock, err := env.Host.Fence(ctx, req.RunID)
@@ -217,7 +217,7 @@ func service(ctx context.Context, env Env, req wire.Request) (any, error) {
 		return nil, err
 	}
 	defer unlock()
-	return env.Host.Service(ctx, s)
+	return env.Host.Service(ctx, req.ApplyID, s)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so
