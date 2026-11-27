@@ -29,7 +29,7 @@ const (
 	OpService  Op = "service"
 )
 
-// Timeout is how long one op may take (TRD "Timeouts"): stage downloads resleases, schema
+// Timeout is how long one op may take (TRD "Timeouts"): stage downloads releases, schema
 // migrates the databases, and service waits for systemd's own stop and start timeouts. The
 // helper ends its op then, and with it any fence the op holds
 func Timeout(op Op) time.Duration {

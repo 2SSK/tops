@@ -81,3 +81,38 @@ func TestHelperServiceFailed(t *testing.T) {
 		t.Errorf("error = %+v", ue)
 	}
 }
+
+// TestHelperDropIn: a limits drop-in that tops writes for one role changes that instance alone,
+// down to its cgroup, at its next restart: systemd does not see a new drop-in by itself.
+// Restoring the apply takes it away again.
+func TestHelperDropIn(t *testing.T) {
+	c, n := serviceNode(t)
+	for _, unit := range []string{"temporal@history.service", "temporal@matching.service"} {
+		if _, err := n.Service(t.Context(), wire.Service{Unit: unit, Action: wire.ServiceEnableNow}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	limits := wire.File{Path: "/etc/systemd/system/temporal@history.service.d/limits.conf", Content: []byte("[Service]\nMemoryMax=1G\n"), Mode: "0644", Owner: "root", Group: "root"}
+	if _, err := n.Write(t.Context(), wire.Write{Files: []wire.File{limits}}); err != nil {
+		t.Fatal(err)
+	}
+	memoryMax := func() string {
+		t.Helper()
+		for _, unit := range []string{"temporal@history.service", "temporal@matching.service"} {
+			if _, err := n.Service(t.Context(), wire.Service{Unit: unit, Action: wire.ServiceRestart}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return strings.ReplaceAll(docker(t, nil, "exec", c.id, "sh", "-c", "for u in history matching; do systemctl show -p MemoryMax --value temporal@$u; done; cat /sys/fs/cgroup/system.slice/system-temporal.slice/temporal@history.service/memory.max"), "\n", " ")
+	}
+	if got := memoryMax(); got != "1073741824 infinity 1073741824" {
+		t.Errorf("after the write, MemoryMax of history, matching, and history's cgroup: %q", got)
+	}
+	undo := c.apply(t, c.dialer(t, c.cfg), "20261126T110000Z-bbbb")
+	if _, err := undo.Restore(t.Context(), wire.Restore{Snapshot: "20261126T100000Z-aaaa"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := memoryMax(); got != "infinity infinity max" {
+		t.Errorf("after the restore: %q", got)
+	}
+}

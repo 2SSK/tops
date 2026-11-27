@@ -495,7 +495,7 @@ exact build of the workstation (same sha), so there is no protocol version. Ops 
 | `stage`    | releases, user, packages    | yes    | bootstrap, apply, upgrade, node add    | T3.1  |
 | `schema`   | datastore                   | yes    | bootstrap, upgrade                     | T3.3  |
 | `lock`     | `/var/lib/tops/lock`        | -      | every mutating command                 | T3.4  |
-| `write`    | files, symlinks, effects    | yes    | bootstrap, apply, upgrade, node add    | T3.5  |
+| `write`    | files, removals             | yes    | bootstrap, apply, upgrade, node add    | T3.5  |
 | `restore`  | files from a snapshot       | yes    | rollback                               | T3.5  |
 | `service`  | unit state                  | yes    | every rollout                          | T3.5  |
 | `history`  | append / list               | append | every mutating command; rollback list  | T3.5  |
@@ -602,7 +602,7 @@ need NTP; `hello` reports `clockSynced` and mutating commands warn when false.
 | ---------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `dynamicconfig-<r>.yaml`, every changed key `hot`                | hot-reload                    | Write; Temporal re-reads within its poll interval (10 s)                                                        |
 | `dynamicconfig-<r>.yaml`, any changed key `restart` or `unknown` | restart r                     | Write; restart `temporal@r` with the gate                                                                       |
-| `<r>.yaml`, `<r>.env`, `limits.conf` of r                        | restart r                     | Write; `daemon-reload` if a unit file changed; restart with the gate (one restart per role, however many files) |
+| `<r>.yaml`, `<r>.env`, `limits.conf` of r                        | restart r                     | Write; restart with the gate, which runs `daemon-reload` first (one restart per role, however many files)     |
 | `temporal.env`, `temporal@.service`                              | restart all roles on the node | As above, per role in role-major order                                                                          |
 | Role added / removed                                             | start r / stop r              | "Orders"                                                                                                        |
 | Firewall (T6)                                                    | firewall                      | Atomic chain replace; established connections stay                                                              |
@@ -622,7 +622,7 @@ load + validate -> connect -> lock (all nodes) -> plan (as above, under the lock
   -> print plan -> confirm (TTY, or -y) -> stage (parallel)
   -> firewall additions (parallel) -> hot and non-Temporal classes (parallel)
   -> restart / start / stop: one role on one node at a time, role-major, each: gate before, write (snapshot),
-     daemon-reload if needed, service action, gate after
+     service action (daemon-reload first), gate after
   -> namespaces -> firewall removals -> history records -> unlock -> summary (+ rollback hint)
 ```
 

@@ -344,9 +344,9 @@ type Event struct {
 | `stage`    | `Stage`                                                                                | `{ "changed": ["…"] }`                       | progress |
 | `schema`   | `Schema`                                                                               | `{}`; the workstation reads `schema_version` before and after | no |
 | `lock`     | `{ "action": "acquire"\|"renew"\|"release", "lease": Lease }`; run and apply id from the request | `{ "held": bool, "lease": Lease?, "previous": Lease?, "now": time }` (`now`: the node's clock) | no |
-| `write`    | `{ "files": [File], "remove": ["<path>"], "symlinks": [{"path", "target"}], "roles": {"enable": [], "disable": []}, "effects": ["daemon-reload", "firewall", "nginx", "journald"] }` | `WriteResult` | no |
+| `write`    | `{ "files": [File], "remove": ["<path>"] }`; `symlinks` for `current` come with `upgrade` (T7), host effects with T6.1 | `WriteResult` | no |
 | `restore`  | `{ "snapshot": "<apply-id>" }`                                                         | `WriteResult`                                | no       |
-| `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }` | `UnitState`      | no       |
+| `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }`; every start and restart runs `daemon-reload` first | `UnitState`      | no       |
 | `history`  | `{ "action": "append", "record": History }` or `{ "action": "list", "limit": 20 }`     | `{ "records": [History] }`                   | no       |
 | `top`      | `{ "units": ["…"], "sampleMs": 1000 }`                                                 | `{ "units": {"<unit>": Top} }`               | no       |
 | `journal`  | `{ "units": ["…"], "since", "until", "lines": 200, "grep": ["…"], "follow": bool }`    | `{ "count": n }`                             | `journal` |
@@ -413,7 +413,6 @@ type WriteResult struct {
 	Snapshot string   `json:"snapshot"` // apply id the snapshot was stored under
 	Written  []string `json:"written"`
 	Removed  []string `json:"removed"`
-	Effects  []string `json:"effects"`  // effects that ran
 }
 
 type Top struct {

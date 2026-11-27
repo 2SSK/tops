@@ -35,25 +35,22 @@ func (h Host) Service(ctx context.Context, s wire.Service) (wire.UnitState, erro
 	return h.unitState(ctx, conn, loaded[0]) // one status for each name, loaded or not
 }
 
-// act runs's jobs. Enabling and disabling change the unit's links, which systemd sees only
-// after a reload, as systemctl does. disable-now stops first: a stop that fails leaves the
-// unit as it was, enabled.
+// act runs s's jobs. Every start loads the unit's files as they are now (reloadThen).
+// Enabling and disabling change the unit's links, which systemd also sees only after a
+// reload. disable-now stops first: a stop that fails leaves the unit as it was, enabled.
 func act(ctx context.Context, conn Systemd, s wire.Service) error {
 	switch s.Action {
 	case wire.ServiceStart:
-		return job(ctx, conn.StartUnitContext, "start", s.Unit)
+		return reloadThen(ctx, conn, conn.StartUnitContext, "start", s.Unit)
 	case wire.ServiceStop:
 		return job(ctx, conn.StopUnitContext, "stop", s.Unit)
 	case wire.ServiceRestart:
-		return job(ctx, conn.RestartUnitContext, "restart", s.Unit)
+		return reloadThen(ctx, conn, conn.RestartUnitContext, "restart", s.Unit)
 	case wire.ServiceEnableNow:
 		if _, _, err := conn.EnableUnitFilesContext(ctx, []string{s.Unit}, false, false); err != nil {
 			return fmt.Errorf("enable %s: %w", s.Unit, err)
 		}
-		if err := conn.ReloadContext(ctx); err != nil {
-			return fmt.Errorf("daemon-reload: %w", err)
-		}
-		return job(ctx, conn.StartUnitContext, "start", s.Unit)
+		return reloadThen(ctx, conn, conn.StartUnitContext, "start", s.Unit)
 	default: // disable-now: checkService let nothing else through
 		if err := job(ctx, conn.StopUnitContext, "stop", s.Unit); err != nil {
 			return err
@@ -61,11 +58,25 @@ func act(ctx context.Context, conn Systemd, s wire.Service) error {
 		if _, err := conn.DisableUnitFilesContext(ctx, []string{s.Unit}, false); err != nil {
 			return fmt.Errorf("disable %s: %w", s.Unit, err)
 		}
-		if err := conn.ReloadContext(ctx); err != nil {
-			return fmt.Errorf("daemon-reload: %w", err)
-		}
-		return nil
+		return reload(ctx, conn)
 	}
+}
+
+// reloadThen runs daemon-reload, then the job. systemd marks a unit NeedDaemonReload when a
+// file it loaded changed, but not when a drop-in appears beside it: without the reload, a new
+// limits.conf would wait for some later reload, and the role would start without it.
+func reloadThen(ctx context.Context, conn Systemd, start jobStart, verb, unit string) error {
+	if err := reload(ctx, conn); err != nil {
+		return err
+	}
+	return job(ctx, start, verb, unit)
+}
+
+func reload(ctx context.Context, conn Systemd) error {
+	if err := conn.ReloadContext(ctx); err != nil {
+		return fmt.Errorf("daemon-reload: %w", err)
+	}
+	return nil
 }
 
 // job starts one job and waits for its result. ch has room for it: go-systemd sends the

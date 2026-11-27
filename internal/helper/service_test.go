@@ -84,16 +84,17 @@ func (f *fakeSystemd) ReloadContext(context.Context) error {
 
 const historyUnit = "temporal@history.service"
 
-// TestService: each action runs its jobs in "replace" mode and waits for them; enabling and
-// disabling are persistent and followed by a reload; the result is the unit's state after.
+// TestService: each action runs its jobs in "replace" mode and waits for them; every start
+// follows a reload, and so does disabling; enabling and disabling are persistent; the result
+// is the unit's state after.
 func TestService(t *testing.T) {
 	for _, tc := range []struct {
 		action string
 		calls  []string
 	}{
-		{wire.ServiceStart, []string{"start " + historyUnit + " replace"}},
+		{wire.ServiceStart, []string{"reload", "start " + historyUnit + " replace"}},
 		{wire.ServiceStop, []string{"stop " + historyUnit + " replace"}},
-		{wire.ServiceRestart, []string{"restart " + historyUnit + " replace"}},
+		{wire.ServiceRestart, []string{"reload", "restart " + historyUnit + " replace"}},
 		{wire.ServiceEnableNow, []string{"enable " + historyUnit, "reload", "start " + historyUnit + " replace"}},
 		{wire.ServiceDisableNow, []string{"stop " + historyUnit + " replace", "disable " + historyUnit, "reload"}},
 	} {
@@ -114,20 +115,22 @@ func TestService(t *testing.T) {
 }
 
 // TestServiceFails: a job that ends in anything but "done" is systemd.job_failed with the
-// result; a failed call, or a wait that runs out of time, says which step; disable-now
-// leaves a unit it could not stop enabled.
+// result; a failed call, or a wait that runs out of time, says which step and runs nothing
+// after it: no job after a failed reload, and disable-now leaves a unit it could not stop
+// enabled.
 func TestServiceFails(t *testing.T) {
 	for _, tc := range []struct {
 		name, action, failOn, result, want string
 		calls                              int
 	}{
-		{"job failed", wire.ServiceStart, "", "failed", codeJobFailed + ": start " + historyUnit + ": the job ended failed", 1},
-		{"job timed out", wire.ServiceRestart, "", "timeout", codeJobFailed + ": restart " + historyUnit + ": the job ended timeout", 1},
+		{"job failed", wire.ServiceStart, "", "failed", codeJobFailed + ": start " + historyUnit + ": the job ended failed", 2},
+		{"job timed out", wire.ServiceRestart, "", "timeout", codeJobFailed + ": restart " + historyUnit + ": the job ended timeout", 2},
 		{"dependency", wire.ServiceEnableNow, "", "dependency", codeJobFailed + ": start " + historyUnit + ": the job ended dependency", 3},
 		{"stop failed", wire.ServiceDisableNow, "", "failed", codeJobFailed + ": stop " + historyUnit + ": the job ended failed", 1},
-		{"no unit", wire.ServiceStart, "start", "", "start " + historyUnit + ": no such unit", 1},
+		{"no unit", wire.ServiceStart, "start", "", "start " + historyUnit + ": no such unit", 2},
 		{"no unit file", wire.ServiceEnableNow, "enable", "", "enable " + historyUnit + ": no such unit file", 1},
-		{"reload", wire.ServiceEnableNow, "reload", "", "daemon-reload: access denied", 2},
+		{"reload first", wire.ServiceRestart, "reload", "", "daemon-reload: access denied", 1},
+		{"enabled, reload", wire.ServiceEnableNow, "reload", "", "daemon-reload: access denied", 2},
 		{"disable", wire.ServiceDisableNow, "disable", "", "disable " + historyUnit + ": access denied", 2},
 		{"disabled, reload", wire.ServiceDisableNow, "reload", "", "daemon-reload: access denied", 3},
 		{"state", wire.ServiceStop, "names", "", "read " + historyUnit + ": connection reset", 1},
@@ -216,7 +219,7 @@ func TestRunService(t *testing.T) {
 	restart := serviceRequest(t, wire.Service{Unit: historyUnit, Action: wire.ServiceRestart})
 	code, resp, _ := run(t, Env{Host: h, Root: true}, wire.OpService, restart)
 	var st wire.UnitState
-	if code != ExitOK || json.Unmarshal(resp.Result, &st) != nil || st.MainPID != 4242 || !slices.Equal(sd.calls, []string{"restart " + historyUnit + " replace"}) {
+	if code != ExitOK || json.Unmarshal(resp.Result, &st) != nil || st.MainPID != 4242 || !slices.Equal(sd.calls, []string{"reload", "restart " + historyUnit + " replace"}) {
 		t.Errorf("exit %d, %+v, %s, calls %q", code, resp.Error, resp.Result, sd.calls)
 	}
 	sd.result = "failed"
