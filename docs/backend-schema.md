@@ -347,7 +347,7 @@ type Event struct {
 | `write`    | `{ "files": [File], "remove": ["<path>"] }`; `symlinks` for `current` come with `upgrade` (T7), host effects with T6.1 | `WriteResult` | no |
 | `restore`  | `{ "snapshot": "<apply-id>" }`                                                         | `WriteResult`                                | no       |
 | `service`  | `{ "unit": "temporal@history.service", "action": "start"\|"stop"\|"restart"\|"enable-now"\|"disable-now" }`; every start and restart runs `daemon-reload` first; needs an apply id, under which `enable-now` and `disable-now` record the role in `applied.json` | `UnitState`      | no       |
-| `history`  | `{ "action": "append", "record": History }` or `{ "action": "list", "limit": 20 }`     | `{ "records": [History] }`                   | no       |
+| `history`  | `{ "action": "append", "record": History }`: fenced, needs an apply id, run and apply id from the request, a retry replaces the run's record; or `{ "action": "list", "limit": 20 }` (0 is 20, at most 100), unfenced | append `{}`; list `{ "records": [History] }`, newest apply id first | no |
 | `top`      | `{ "units": ["…"], "sampleMs": 1000 }`                                                 | `{ "units": {"<unit>": Top} }`               | no       |
 | `journal`  | `{ "units": ["…"], "since", "until", "lines": 200, "grep": ["…"], "follow": bool }`    | `{ "count": n }`                             | `journal` |
 | `run` (v1.1) | `{ "role": "history" }`                                                              | `{ "exitCode": n }`                          | `output` |
@@ -543,14 +543,14 @@ type History struct {
 	SpecSHA256  string    `json:"specSha256"` // cluster.yaml + base/ + overrides.yaml, as loaded
 	StartedAt   time.Time `json:"startedAt"`
 	FinishedAt  time.Time `json:"finishedAt"`
-	Changes     []Change  `json:"changes"`    // {path, role, action: create|update|remove, effect, beforeSha256, afterSha256}
+	Changes     []Change  `json:"changes"`    // {path, role, action: create|update|remove, effect, beforeSha256, afterSha256}: hashes fit the action
 	Restarted   []string  `json:"restarted"`  // roles restarted on this node
 	Started     []string  `json:"started"`
 	Stopped     []string  `json:"stopped"`
 	Result      string    `json:"result"`     // ok | failed | interrupted
 	Error       string    `json:"error,omitempty"`
 	RollbackOf  string    `json:"rollbackOf,omitempty"`
-	Snapshot    bool      `json:"snapshot"`   // false once rotated out
+	Snapshot    bool      `json:"snapshot"`   // set by list: false once rotated out
 }
 
 type SnapshotManifest struct {
@@ -569,7 +569,9 @@ type SnapshotEntry struct {
 }
 ```
 
-History records never contain file contents or secrets: only paths and hashes.
+History records never contain file contents or secrets: only paths and hashes. The type has no
+field that could hold a content, the helper decodes it strictly, and a hash that is not a sha256 is
+`helper.bad_request`.
 
 ## Run log (workstation)
 

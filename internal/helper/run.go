@@ -2,6 +2,7 @@ package helper
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -53,6 +54,7 @@ var handlers = map[wire.Op]handler{
 	wire.OpWrite:    writeFiles,
 	wire.OpRestore:  restore,
 	wire.OpService:  service,
+	wire.OpHistory:  history,
 }
 
 // Run executes one op: it reads one request from stdin, writes one response to stdout,
@@ -218,6 +220,28 @@ func service(ctx context.Context, env Env, req wire.Request) (any, error) {
 	}
 	defer unlock()
 	return env.Host.Service(ctx, req.ApplyID, s)
+}
+
+func history(ctx context.Context, env Env, req wire.Request) (any, error) {
+	var a wire.HistoryArgs
+	if err := decodeArgs(req.Args, &a); err != nil {
+		return nil, err
+	}
+	if a.Record != nil {
+		a.Record.RunID, a.Record.ApplyID = req.RunID, req.ApplyID // the record is the request's run's
+	}
+	if err := checkHistory(a); err != nil {
+		return nil, badRequest("args", err)
+	}
+	if a.Action == wire.HistoryList {
+		return env.Host.ListHistory(cmp.Or(a.Limit, defaultListed))
+	}
+	unlock, err := env.Host.Fence(ctx, req.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	return struct{}{}, env.Host.AppendHistory(*a.Record)
 }
 
 // checkPath refuses a path that is not absolute and clean: the helper runs as root, so

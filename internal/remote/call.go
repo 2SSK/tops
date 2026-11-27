@@ -152,3 +152,16 @@ func (n *Node) Restore(ctx context.Context, r wire.Restore) (wire.WriteResult, e
 func (n *Node) Service(ctx context.Context, s wire.Service) (wire.UnitState, error) {
 	return nodeOp[wire.UnitState](ctx, n, wire.OpService, s)
 }
+
+// AppendHistory keeps the run's record on the node, named by the run's apply id; the helper
+// sets the record's run and apply id from the request. A retry replaces the record.
+func (n *Node) AppendHistory(ctx context.Context, r wire.History) error {
+	_, err := nodeOp[struct{}](ctx, n, wire.OpHistory, wire.HistoryArgs{Action: wire.HistoryAppend, Record: &r})
+	return err
+}
+
+// ListHistory returns the node's newest records, up to limit (0 is 20), the newest first.
+func (n *Node) ListHistory(ctx context.Context, limit int) ([]wire.History, error) {
+	res, err := nodeOp[wire.HistoryResult](ctx, n, wire.OpHistory, wire.HistoryArgs{Action: wire.HistoryList, Limit: limit})
+	return res.Records, err
+}

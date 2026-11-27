@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/2SSK/tops/internal/wire"
@@ -57,7 +58,7 @@ func (h Host) Write(applyID string, w wire.Write) (wire.WriteResult, error) {
 	if err != nil || r.Snapshot == "" {
 		return r, err
 	}
-	return r, h.pruneSnapshots(applyID)
+	return r, h.keepNewest(snapshotsDir, "", keepSnapshots, applyID)
 }
 
 // link is a symlink restore puts back; write makes none.
@@ -66,7 +67,7 @@ type link struct{ path, target string }
 // put makes the node's files, links and absences what the caller wants. First it saves every
 // path it is about to change in the apply's snapshot; a path already as wanted is left alone,
 // so a second put changes nothing and saves nothing. Last it records the files in
-// applied.json
+// applied.json.
 func (h Host) put(applyID string, w wire.Write, links []link) (wire.WriteResult, error) {
 	if err := h.sweep(); err != nil {
 		return wire.WriteResult{}, err
@@ -241,25 +242,36 @@ func (h Host) manifest(applyID string) (snapshotManifest, bool, error) {
 	return m, true, nil
 }
 
-// pruneSnapshots keeps the newest ten snapshots, applyID's own always among them: apply ids
-// carry the workstation's clock, and a slow one must not cost an apply its own undo.
-func (h Host) pruneSnapshots(applyID string) error {
-	entries, err := os.ReadDir(filepath.Join(h.Root, snapshotsDir)) // by name, so oldest first
+// keepNewest keeps the newest keep of dir's entries named <apply-id><suffix>, applyID's own
+// always among them: apply ids carry the workstation's clock, and a slow one must not cost an
+// apply its own snapshot or record.
+func (h Host) keepNewest(dir, suffix string, keep int, applyID string) error {
+	ids, err := h.applyIDs(dir, suffix)
 	if err != nil {
-		return fileError("read", snapshotsDir, err)
+		return fileError("read", dir, err)
 	}
-	var others []string
-	for _, e := range entries {
-		if e.Name() != applyID && applyIDName.MatchString(e.Name()) {
-			others = append(others, e.Name())
-		}
-	}
-	for _, id := range others[:max(0, len(others)-(keepSnapshots-1))] {
-		if err := os.RemoveAll(filepath.Join(h.Root, snapshotsDir, id)); err != nil {
-			return fileError("remove", filepath.Join(snapshotsDir, id), err)
+	ids = slices.DeleteFunc(ids, func(id string) bool { return id == applyID })
+	for _, id := range ids[:max(0, len(ids)-(keep-1))] {
+		name := filepath.Join(dir, id+suffix)
+		if err := os.RemoveAll(filepath.Join(h.Root, name)); err != nil {
+			return fileError("remove", name, err)
 		}
 	}
 	return nil
+}
+
+func (h Host) applyIDs(dir, suffix string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(h.Root, dir)) // by name, so oldest first
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, e := range entries {
+		if id, ok := strings.CutSuffix(e.Name(), suffix); ok && applyIDName.MatchString(id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // saveEntry records path as it is: absent, a symlink and its target, or a file whose content

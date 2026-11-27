@@ -582,7 +582,9 @@ need NTP; `hello` reports `clockSynced` and mutating commands warn when false.
   hand it 077, which would keep the temporal user out of `/etc/temporal` and `/opt/temporal`.
 - `restore` reads and checks every saved content before its first change; a snapshot that is gone or
   damaged is `snapshot.missing`. It saves the live state under the run's own apply id first.
-- History record per node per run in `/var/lib/tops/history/<apply-id>.json`; newest 100 kept.
+- History record per node per run in `/var/lib/tops/history/<apply-id>.json` (0600), named by the
+  request's apply id; a retry of the append replaces the run's record. Newest 100 kept, the run's own
+  always. `list` needs no lease and says, per record, whether its snapshot is still there.
 - `/var/lib/tops/applied.json` (0600): sha256, mode, owner and group of every file as tops last wrote it,
   the roles it enabled, and `current` (from `upgrade`, T7). `write` and `restore` record the files they
   were given, `service` the role `enable-now` or `disable-now` changed; both record even when nothing

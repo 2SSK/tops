@@ -27,6 +27,7 @@ const (
 	OpWrite    Op = "write"
 	OpRestore  Op = "restore"
 	OpService  Op = "service"
+	OpHistory  Op = "history"
 )
 
 // Timeout is how long one op may take (TRD "Timeouts"): stage downloads releases, schema
@@ -294,4 +295,70 @@ const (
 type Service struct {
 	Unit   string `json:"unit"` // temporal@history.service
 	Action string `json:"action"`
+}
+
+// The history op's actions.
+const (
+	HistoryAppend = "append"
+	HistoryList   = "list"
+)
+
+// HistoryArgs asks the helper to keep a run's record on the node, or for the newest records.
+type HistoryArgs struct {
+	Action string   `json:"action"`
+	Record *History `json:"record,omitempty"` // append: the helper sets its run and apply id from the request
+	Limit  int      `json:"limit,omitempty"`  // list: 0 is 20, at most 100
+}
+
+// HistoryResult is what list found, the newest apply id first.
+type HistoryResult struct {
+	Records []History `json:"records"`
+}
+
+// The results a run's record ends with.
+const (
+	ResultOK          = "ok"
+	ResultFailed      = "failed"
+	ResultInterrupted = "interrupted"
+)
+
+// History is the audit record of one run on one node: who changed what, when, and with what
+// result. It has paths and hashes, and no field that could hold a file's content.
+type History struct {
+	ApplyID     string    `json:"applyId"`
+	RunID       string    `json:"runId"`
+	Command     string    `json:"command"` // "apply", "rollback20261023T153012Z-7f3a"
+	By          string    `json:"by"`
+	TopsVersion string    `json:"topsVersion"`
+	Env         string    `json:"env"`
+	Cluster     string    `json:"cluster"`
+	Node        string    `json:"node"`
+	SpecSHA256  string    `json:"specSha256"` // cluster.yaml, base/ and override.yaml, are loaded
+	StartedAt   time.Time `json:"startedAt"`
+	FinishedAt  time.Time `json:"finishedAt"`
+	Changes     []Change  `json:"changes"`
+	Restarted   []string  `json:"restarted"` // roles restarted on this node
+	Started     []string  `json:"started"`
+	Stopped     []string  `json:"stopped"`
+	Result      string    `json:"result"`
+	Error       string    `json:"error,omitempty"`
+	RollbackOf  string    `json:"rollbackOf,omitempty"` // the apply id a rollback undid
+	Snapshot    bool      `json:"snapshot"`             // set by list: the apply's snapshot is still on the node
+}
+
+// The actions of a change.
+const (
+	ChangeCreate = "create"
+	ChangeUpdate = "update"
+	ChangeRemove = "remove"
+)
+
+// Change is one path a run changed, by its hashes before and after.
+type Change struct {
+	Path         string `json:"path"`
+	Role         string `json:"role,omitempty"` // "" for afile every role reads
+	Action       string `json:"action"`
+	Effect       string `json:"effect,omitempty"`
+	BeforeSHA256 string `json:"beforeSha256,omitempty"` // "" for create
+	AfterSHA256  string `json:"afterSha256,omitempty"`
 }
