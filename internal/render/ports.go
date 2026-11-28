@@ -4,6 +4,8 @@
 package render
 
 import (
+	"slices"
+
 	"github.com/2SSK/tops/internal/spec"
 )
 
@@ -27,6 +29,11 @@ var portTable = map[string]Ports{
 
 // PortsOf returns a role's ports.
 func PortsOf(role string) Ports { return portTable[role] }
+
+// Listening is every port the role listens on: gRPC, membership, HTTP, metrics, pprof.
+func (p Ports) Listening() []int {
+	return slices.DeleteFunc([]int{p.GRPC, p.Membership, p.HTTP, p.Metrics, p.Pprof}, func(port int) bool { return port == 0 })
+}
 
 // allPorts is every role's ports in stage order: each config's services block lists all four,
 // and Temporal reads only the block of the service it starts.

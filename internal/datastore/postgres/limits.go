@@ -1,6 +1,5 @@
-// Package postgres reads what tops needs from the cluster's PostgreSQL: today, its connection
-// limits for the sizing budget. Connections go through a dialer the caller gives, which is an
-// SSH tunnel through a node: the database is never reached from the workstation directly.
+// Package postgres reads what tops needs from the cluster's PostgreSQL: its connection limits
+// for the sizing budget, and what bootstrap must know before it creates anything there.
 package postgres
 
 import (
@@ -40,13 +39,9 @@ const limitsQuery = `SELECT
 
 // Limits connects once, reads the server's connection limits, and loses.
 func Limits(ctx context.Context, c Config) (sizing.DBLimits, error) {
-	cfg, err := connConfig(c)
+	conn, err := open(ctx, c)
 	if err != nil {
 		return sizing.DBLimits{}, err
-	}
-	conn, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		return sizing.DBLimits{}, fmt.Errorf("connect to %s as %s: %w", net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), c.User, err)
 	}
 	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
 
@@ -55,6 +50,19 @@ func Limits(ctx context.Context, c Config) (sizing.DBLimits, error) {
 		return sizing.DBLimits{}, fmt.Errorf("read the connection limits of %s: %w", c.Host, err)
 	}
 	return l, nil
+}
+
+// open connects to c's database through c's dialer.
+func open(ctx context.Context, c Config) (*pgx.Conn, error) {
+	cfg, err := connConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("connect to %s as %s: %w", net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), c.User, err)
+	}
+	return conn, nil
 }
 
 // connConfig builds the connection from the spec alone. pgx.ParseConfig("") also reads the

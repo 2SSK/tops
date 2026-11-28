@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"text/template"
@@ -189,6 +190,12 @@ func TestPortScheme(t *testing.T) {
 	}
 	if PortsOf("frontend").HTTP != 7243 || PortsOf("history").HTTP != 0 {
 		t.Error("only frontend serves HTTP, on 7243")
+	}
+	if got := PortsOf("frontend").Listening(); !slices.Equal(got, []int{7233, 6933, 7243, 9233, 7933}) {
+		t.Errorf("frontend listens on %v", got)
+	}
+	if got := PortsOf("history").Listening(); !slices.Equal(got, []int{7234, 6934, 9234, 7934}) {
+		t.Errorf("history listens on %v: no HTTP port", got)
 	}
 }
 

@@ -303,11 +303,11 @@ apply with: tops -e <env> apply
 Lock: yes. Nodes: Connect. Journey 2 has the full sequence.
 
 1. Lock all nodes.
-2. Preflight in parallel: Ubuntu 24.04; sizing fits; ports free (6933-6939, 7233-7243, 9233-9239,
-   7933-7939; from T6 also 9100, 80, and 8080 on `ui` nodes); no `temporal@*` unit (unless resuming);
-   clock synced (warning).
+2. Preflight in parallel: Ubuntu 24.04; sizing fits; every port of the node's roles free (TRD "Ports";
+   from T6 also 9100, 80, and 8080 on `ui` nodes); no `temporal@*` unit (unless resuming); clock synced
+   (warning). Resuming, the units and a `temporal-server` on the ports are the cluster's own.
 3. Datastore preflight through a tunnel: reachable; `cluster_metadata_info` empty or naming this cluster
-   (resume); DB budget fits.
+   (resume); both databases owned by the spec's user, or missing and it may create them; DB budget fits.
 4. Plan (every file per node and role, releases, databases, namespaces); confirm.
 5. Stage in parallel; schema from the first node; validate every role's files with the staged binary.
 6. Start in role stages (frontend, history, matching, worker, ui), one node at a time within a stage, each
@@ -322,6 +322,7 @@ Lock: yes. Nodes: Connect. Journey 2 has the full sequence.
 | Not Ubuntu 24.04                  | `refused.unsupported_os`     | 3    | Nothing changed                 |
 | A `temporal@*` unit exists, store empty | `refused.node_in_use`  | 3    | Nothing changed                 |
 | Datastore holds another cluster   | `refused.datastore_in_use`   | 3    | Nothing changed                 |
+| Databases another role owns, or missing and not creatable | `refused.datastore_access` | 3 | Nothing changed |
 | DB budget                         | `refused.db_budget`          | 3    | Nothing changed                 |
 | Download or checksum              | `release.download`, `release.checksum` | 1 | Partly staged; re-run continues |
 | Schema tool fails                 | `schema.failed` (stderr, no secrets) | 1 | Re-run continues          |
@@ -906,6 +907,7 @@ Every row has an e2e test by T8 (`TestRefuse<Name>`); v2 rows by T10.
 | Ring member not in the spec                                      | plan, apply                  | `refused.unknown_member`     | T4.1  |
 | Lock held by a live run                                          | all mutating                 | `lock.held`                  | T3.4  |
 | Bootstrap into a datastore holding another cluster               | bootstrap                    | `refused.datastore_in_use`   | T3.8  |
+| Bootstrap into databases the spec's user cannot create or migrate | bootstrap                   | `refused.datastore_access`   | T3.8  |
 | Bootstrap on a node running Temporal; `node add` of a member     | bootstrap, node add          | `refused.node_in_use`        | T3.8  |
 | Ports tops needs are in use                                      | bootstrap, node add          | `refused.ports_in_use`       | T3.8  |
 | Node OS is not Ubuntu 24.04                                      | bootstrap, node add          | `refused.unsupported_os`     | T3.8  |
