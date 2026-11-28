@@ -525,7 +525,7 @@ Views are read from every running frontend (the admin API lives there). Ring mem
 
 | Role     | Before touching role R on node X (refuse if any fails)                                                                    | After (poll 2 s; stable twice 5 s apart; timeout 3 min)  |
 | -------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| all      | At least one frontend other than X's is SERVING (else `refused.last_frontend`); no unknown member in any ring of any view | -                                                        |
+| all      | A frontend SERVING to read through, other than X's when R is frontend (else `refused.last_frontend`); no member the spec does not run in that ring, in any view (else `refused.unknown_member`) | -                                                        |
 | frontend | Every other frontend in the frontend ring in every view                                                                   | X SERVING; X in the frontend ring in every view          |
 | history  | Every other history member in the ring; shard sum = `shards`                                                              | X in the history ring; X owns > 0 shards; sum = `shards` |
 | matching | Every other matching member in the ring                                                                                   | X in the matching ring in every view                     |

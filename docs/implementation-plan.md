@@ -960,8 +960,9 @@ views from different frontends.
 
 **Learn first.** TRD "Gate per role"; concepts "Membership", "History shards".
 
-**Build.** `internal/gate`: before/after per role, 2 s polling, stable twice, timeout report with the journal
-tail; the single-instance and single-frontend warnings.
+**Build.** `internal/gate`: before/after per role, 2 s polling, stable twice, timeout report naming the condition
+that failed last (the journal tail joins it with the helper's `journal`, T5.2); the single-instance and
+single-frontend warnings.
 
 **Verify.** `go test -race ./internal/gate/...` with a fake cluster: flapping ring, shard dip, unknown member,
 single-instance role, last frontend.
